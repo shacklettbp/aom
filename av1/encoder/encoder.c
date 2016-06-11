@@ -2833,12 +2833,8 @@ static void encode_with_recode_loop(AV1_COMP *cpi, size_t *size,
 
     if (loop_count == 0) setup_frame(cpi);
 
-    // Variance adaptive and in frame q adjustment experiments are mutually
-    // exclusive.
-    if (cpi->oxcf.aq_mode == VARIANCE_AQ) {
-      av1_vaq_frame_setup(cpi);
-    } else if (cpi->oxcf.aq_mode == COMPLEXITY_AQ) {
-      av1_setup_in_frame_q_adj(cpi);
+    if (cpi->oxcf.aq_enabled) {
+      av1_aq_frame_setup(cpi);
     }
 
     // transform / motion compensation build reconstruction frame

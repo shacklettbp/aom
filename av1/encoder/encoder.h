@@ -110,12 +110,10 @@ typedef enum {
 } FRAMETYPE_FLAGS;
 
 typedef enum {
-  NO_AQ = 0,
-  VARIANCE_AQ = 1,
-  COMPLEXITY_AQ = 2,
-  CYCLIC_REFRESH_AQ = 3,
-  AQ_MODE_COUNT  // This should always be the last member of the enum
-} AQ_MODE;
+  VARIANCE_AQ = 1 << 0,
+  COMPLEXITY_AQ = 1 << 1,
+  CYCLIC_REFRESH_AQ = 1 << 2,
+} AQ_DISTORTION_MODE;
 
 typedef enum {
   RESIZE_NONE = 0,    // No frame resizing allowed.
@@ -174,7 +172,8 @@ typedef struct AV1EncoderConfig {
   int worst_allowed_q;
   int best_allowed_q;
   int cq_level;
-  AQ_MODE aq_mode;  // Adaptive Quantization mode
+  int aq_enabled;
+  AQ_DISTORTION_MODE aq_distortion_mode;  // Distortion metric used for Adaptive Quantization
 #if CONFIG_AOM_QM
   int using_qm;
   int qm_minlevel;
