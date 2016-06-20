@@ -153,10 +153,10 @@ static void swap_block_ptr(MACROBLOCK *x, PICK_MODE_CONTEXT *ctx, int m, int n,
   }
 }
 
-static void model_rd_for_sb(AV1_COMP *cpi, BLOCK_SIZE bsize, MACROBLOCK *x,
-                            MACROBLOCKD *xd, int *out_rate_sum,
-                            int64_t *out_dist_sum, int *skip_txfm_sb,
-                            int64_t *skip_sse_sb) {
+void av1_model_rd_for_sb(const AV1_COMP *const cpi, BLOCK_SIZE bsize, MACROBLOCK *x,
+                         MACROBLOCKD *xd, int *out_rate_sum,
+                         int64_t *out_dist_sum, int *skip_txfm_sb,
+                         int64_t *skip_sse_sb) {
   // Note our transform coeffs are 8 times an orthogonal transform.
   // Hence quantizer step is also 8 times. To get effective quantizer
   // we need to divide by 8 before sending to modeling function.
@@ -3012,8 +3012,8 @@ static int64_t handle_inter_mode(
             }
           }
           av1_build_inter_predictors_sb(xd, mi_row, mi_col, bsize);
-          model_rd_for_sb(cpi, bsize, x, xd, &rate_sum, &dist_sum, &tmp_skip_sb,
-                          &tmp_skip_sse);
+          av1_model_rd_for_sb(cpi, bsize, x, xd, &rate_sum, &dist_sum,
+                              &tmp_skip_sb, &tmp_skip_sse);
 
           rd = RDCOST(x->rdmult, x->rddiv, rate_sum, dist_sum);
           if (cm->interp_filter == SWITCHABLE) rd += rs_rd;
@@ -3075,8 +3075,8 @@ static int64_t handle_inter_mode(
     // switchable list (ex. bilinear) is indicated at the frame level, or
     // skip condition holds.
     av1_build_inter_predictors_sb(xd, mi_row, mi_col, bsize);
-    model_rd_for_sb(cpi, bsize, x, xd, &tmp_rate, &tmp_dist, &skip_txfm_sb,
-                    &skip_sse_sb);
+    av1_model_rd_for_sb(cpi, bsize, x, xd, &tmp_rate, &tmp_dist, &skip_txfm_sb,
+                        &skip_sse_sb);
     rd = RDCOST(x->rdmult, x->rddiv, rs + tmp_rate, tmp_dist);
     memcpy(skip_txfm, x->skip_txfm, sizeof(skip_txfm));
     memcpy(bsse, x->bsse, sizeof(bsse));

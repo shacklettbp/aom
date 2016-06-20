@@ -44,6 +44,11 @@ void av1_choose_segmap_coding_method(AV1_COMMON *cm, MACROBLOCKD *xd);
 
 void av1_reset_segment_features(AV1_COMMON *cm);
 
+int av1_calc_segment_rdmult(AV1_COMP *const cpi, MACROBLOCK *const x,
+                            int8_t segment_id);
+
+int av1_calc_segmap_cost(AV1_COMMON *cm, MACROBLOCKD *xd, int segment_id, BLOCK_SIZE bs, int mi_row, int mi_col, struct seg_counts *counts);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

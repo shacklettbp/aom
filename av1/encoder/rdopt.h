@@ -62,6 +62,11 @@ void av1_rd_pick_inter_mode_sub8x8(struct AV1_COMP *cpi,
                                    PICK_MODE_CONTEXT *ctx,
                                    int64_t best_rd_so_far);
 
+void av1_model_rd_for_sb(const AV1_COMP *cpi, BLOCK_SIZE bsize, MACROBLOCK *x,
+                         MACROBLOCKD *xd, int *out_rate_sum,
+                         int64_t *out_dist_sum, int *skip_txfm_sb,
+                         int64_t *skip_sse_sb);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
