@@ -68,7 +68,7 @@ void av1_rdo_aq_frame_setup(AV1_COMP *cpi) {
 /* Perform RDO on the different segment possibilities to choose a segment */
 int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs, int mi_row, int mi_col) {
   int cur_segment, best_segment;
-  int lambda, rd_min;
+  int64_t rd_min;
   MACROBLOCKD *xd;
   AV1_COMMON *cm = &cpi->common;
   struct seg_counts counts[MAX_SEGMENTS];
@@ -76,14 +76,12 @@ int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs, int 
   aom_clear_system_state();
 
   xd = &mb->e_mbd;
-  lambda = mb->rdmult;
-  rd_min = INFINITY;
+  rd_min = INT64_MAX;
   best_segment = -1;
 
   for (cur_segment = 0; cur_segment < MAX_SEGMENTS; cur_segment++) {
     int mb_rate, seg_rate, approx_rate, qstep;
-    int64_t mb_distortion;
-    double rd;
+    int64_t mb_distortion, rd;
     unsigned int sse;
 
     memcpy(&counts[cur_segment], &cm->counts.seg, sizeof(struct seg_counts));
@@ -97,7 +95,7 @@ int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs, int 
 
     approx_rate = seg_rate + mb_rate;
 
-    rd = mb_distortion + lambda * approx_rate;
+    rd = RDCOST(mb->rdmult, mb->rddiv, approx_rate, mb_distortion);
     if (rd < rd_min) {
       rd_min = rd;
       best_segment = cur_segment;
