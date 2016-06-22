@@ -36,6 +36,7 @@
 
 #include "av1/encoder/aq_complexity.h"
 #include "av1/encoder/aq_cyclicrefresh.h"
+#include "av1/encoder/aq_rdo.h"
 #include "av1/encoder/aq_variance.h"
 #include "av1/encoder/encodeframe.h"
 #include "av1/encoder/encodemb.h"
@@ -1048,11 +1049,10 @@ void av1_setup_src_planes(MACROBLOCK *x, const YV12_BUFFER_CONFIG *src,
                      x->e_mbd.plane[i].subsampling_y);
 }
 
-static int set_segment_rdmult(AV1_COMP *const cpi, MACROBLOCK *const x,
-                              int8_t segment_id) {
+static int calc_new_rdmult(const AV1_COMP *cpi, const int segment_id) {
   int segment_qindex;
-  AV1_COMMON *const cm = &cpi->common;
-  av1_init_plane_quantizers(cpi, x);
+
+  const AV1_COMMON *cm = &cpi->common;
   aom_clear_system_state();
   segment_qindex = av1_get_qindex(&cm->seg, segment_id, cm->base_qindex);
   return av1_compute_rd_mult(cpi, segment_qindex + cm->y_dc_delta_q);
@@ -1123,16 +1123,20 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
           cm->seg.update_map ? cpi->segmentation_map : cm->last_frame_seg_map;
       mbmi->segment_id = get_segment_id(cm, map, bsize, mi_row, mi_col);
     }
-    x->rdmult = set_segment_rdmult(cpi, x, mbmi->segment_id);
-  } else if (aq_mode == COMPLEXITY_AQ) {
-    x->rdmult = set_segment_rdmult(cpi, x, mbmi->segment_id);
-  } else if (aq_mode == CYCLIC_REFRESH_AQ) {
+  } else if (aq_mode == RDO_AQ) {
+    mbmi->segment_id = av1_rdo_aq_select_segment(cpi, x, bsize, mi_row, mi_col);
+  }
+
+  if (aq_mode == CYCLIC_REFRESH_AQ) {
     const uint8_t *const map =
         cm->seg.update_map ? cpi->segmentation_map : cm->last_frame_seg_map;
     // If segment is boosted, use rdmult for that segment.
     if (cyclic_refresh_segment_id_boosted(
             get_segment_id(cm, map, bsize, mi_row, mi_col)))
       x->rdmult = av1_cyclic_refresh_get_rdmult(cpi->cyclic_refresh);
+  } else if (aq_mode) {
+    av1_init_plane_quantizers(cpi, x);
+    x->rdmult = calc_new_rdmult(cpi, mbmi->segment_id);
   }
 
   // Find best coding mode & reconstruct the MB so it is available
