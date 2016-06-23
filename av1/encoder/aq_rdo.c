@@ -14,9 +14,10 @@
 #include "aom_ports/mem.h"
 #include "aom_ports/system_state.h"
 
-#include "av1/encoder/aq_variance.h"
+#include "av1/encoder/aq_rdo.h"
 
 #include "aom_ports/system_state.h"
+#include "av1/common/pred_common.h"
 #include "av1/common/seg_common.h"
 #include "av1/encoder/ratectrl.h"
 #include "av1/encoder/rd.h"
@@ -66,10 +67,30 @@ void av1_rdo_aq_frame_setup(AV1_COMP *cpi) {
 }
 
 int approx_segment_rate(AV1_COMMON *cm, MACROBLOCKD *xd, int segment_id, BLOCK_SIZE bs, int mi_row, int mi_col)
-{
+{ 
+#if CONFIG_MISC_FIXES
+  struct segmentation_probs *segp = &cm->fc->seg;
+#else
   struct segmentation_probs *segp = &cm->segp;
+#endif
 
+  aom_prob *probs;
 
+  if (frame_is_intra_only(cm) || cm->error_resilient_mode) {
+    probs = segp->tree_probs;
+  }
+  else {
+    const int pred_segment_id = get_segment_id(cm, cm->last_frame_seg_map, bs, mi_row, mi_col);
+    if (pred_segment_id == segment_id)
+      return 0;
+
+    probs = segp->pred_probs;
+  }
+  if (segment_id & 1) {
+    return av1_cost_one(probs[3 + (segment_id >> 2)]);
+  } else {
+    return av1_cost_zero(probs[3 + (segment_id >> 2)]);
+  }
 }
 
 /* Perform RDO on the different segment possibilities to choose a segment */
@@ -78,7 +99,6 @@ int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs, int 
   int64_t rd_min;
   MACROBLOCKD *xd;
   AV1_COMMON *cm = &cpi->common;
-  struct seg_counts counts[MAX_SEGMENTS];
 
   aom_clear_system_state();
 
@@ -91,15 +111,12 @@ int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs, int 
     int64_t mb_distortion, rd;
     unsigned int sse;
 
-    //memcpy(&counts[cur_segment], &cm->counts.seg, sizeof(struct seg_counts));
-
     qstep = get_segdata(&cm->seg, cur_segment, SEG_LVL_ALT_Q) + cm->base_qindex;
     qstep /= 8;
     cpi->fn_ptr[bs].vf(mb->plane[0].src.buf, mb->plane[0].src.stride, av1_64_zeros, 0, &sse);
     av1_model_rd_from_var_lapndz(sse, num_pels_log2_lookup[bs], qstep, &mb_rate, &mb_distortion);
 
     seg_rate = approx_segment_rate(cm, xd, cur_segment, bs, mi_row, mi_col);
-    //seg_rate = av1_calc_segmap_cost(cm, xd, cur_segment, bs, mi_row, mi_col, &counts[cur_segment]);
 
     approx_rate = seg_rate + mb_rate;
 
@@ -109,8 +126,6 @@ int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs, int 
       best_segment = cur_segment;
     }
   }
-
-  //memcpy(&cm->counts.seg, &counts[best_segment], sizeof(struct seg_counts));
 
   return best_segment;
 }
