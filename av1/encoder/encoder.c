@@ -30,6 +30,7 @@
 
 #include "av1/encoder/aq_complexity.h"
 #include "av1/encoder/aq_cyclicrefresh.h"
+#include "av1/encoder/aq_rdo.h"
 #include "av1/encoder/aq_variance.h"
 #include "av1/encoder/bitstream.h"
 #include "av1/encoder/context_tree.h"
@@ -2894,6 +2895,8 @@ static void encode_without_recode_loop(AV1_COMP *cpi) {
     av1_setup_in_frame_q_adj(cpi);
   } else if (cpi->oxcf.aq_mode == CYCLIC_REFRESH_AQ) {
     av1_cyclic_refresh_setup(cpi);
+  } else if (cpi->oxcf.aq_mode == RDO_AQ) {
+    av1_rdo_aq_frame_setup(cpi);
   }
   apply_active_map(cpi);
 
@@ -2990,6 +2993,8 @@ static void encode_with_recode_loop(AV1_COMP *cpi, size_t *size,
       av1_vaq_frame_setup(cpi);
     } else if (cpi->oxcf.aq_mode == COMPLEXITY_AQ) {
       av1_setup_in_frame_q_adj(cpi);
+    } else if (cpi->oxcf.aq_mode == RDO_AQ) {
+      av1_rdo_aq_frame_setup(cpi);
     }
 
     // transform / motion compensation build reconstruction frame

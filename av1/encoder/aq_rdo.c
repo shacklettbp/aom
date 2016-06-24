@@ -41,7 +41,7 @@ void av1_rdo_aq_frame_setup(AV1_COMP *cpi) {
 
   aom_clear_system_state();
 
-  for (i = 0; i < MAX_SEGMENTS; ++i) {
+  for (i = 0; i < MAX_SEGMENTS; i++) {
     int qindex_delta;
 
     // No need to enable SEG_LVL_ALT_Q for this segment.
@@ -95,6 +95,7 @@ int approx_segment_rate(AV1_COMMON *cm, MACROBLOCKD *xd, int segment_id, BLOCK_S
 
 /* Perform RDO on the different segment possibilities to choose a segment */
 int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs, int mi_row, int mi_col) {
+  unsigned int sse;
   int cur_segment, best_segment;
   int64_t rd_min;
   MACROBLOCKD *xd;
@@ -106,15 +107,16 @@ int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs, int 
   rd_min = INT64_MAX;
   best_segment = -1;
 
-  for (cur_segment = 0; cur_segment < MAX_SEGMENTS; cur_segment++) {
-    int mb_rate, seg_rate, approx_rate, qstep;
-    int64_t mb_distortion, rd;
-    unsigned int sse;
+  cpi->fn_ptr[bs].vf(mb->plane[0].src.buf, mb->plane[0].src.stride, av1_64_zeros, 0, &sse);
 
-    qstep = get_segdata(&cm->seg, cur_segment, SEG_LVL_ALT_Q) + cm->base_qindex;
-    qstep /= 8;
-    cpi->fn_ptr[bs].vf(mb->plane[0].src.buf, mb->plane[0].src.stride, av1_64_zeros, 0, &sse);
+  for (cur_segment = 0; cur_segment < MAX_SEGMENTS; cur_segment++) {
+    int mb_rate, seg_rate, approx_rate, qstep, quant;
+    int64_t mb_distortion, rd;
+
+    quant = cpi->y_dequant[get_segdata(&cm->seg, cur_segment, SEG_LVL_ALT_Q) + cm->base_qindex][1];
+    qstep = quant / 8;
     av1_model_rd_from_var_lapndz(sse, num_pels_log2_lookup[bs], qstep, &mb_rate, &mb_distortion);
+    mb_distortion = (sse * qstep) >> 8;
 
     seg_rate = approx_segment_rate(cm, xd, cur_segment, bs, mi_row, mi_col);
 
@@ -126,6 +128,10 @@ int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs, int 
       best_segment = cur_segment;
     }
   }
+
+  assert(best_segment != -1);
+
+  //printf("%d\n", best_segment);
 
   return best_segment;
 }
