@@ -1124,7 +1124,7 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
       mbmi->segment_id = get_segment_id(cm, map, bsize, mi_row, mi_col);
     }
   } else if (aq_mode == RDO_AQ) {
-    mbmi->segment_id = av1_rdo_aq_select_segment(cpi, x, bsize, mi_row, mi_col);
+    mbmi->segment_id = av1_rdo_aq_select_segment(cpi, x, bsize, mi_row, mi_col, rd_cost->rate);
   }
 
   if (aq_mode == CYCLIC_REFRESH_AQ) {

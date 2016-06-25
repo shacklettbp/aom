@@ -19,7 +19,7 @@ extern "C" {
 #endif
 
 void av1_rdo_aq_frame_setup(AV1_COMP *cpi);
-int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs, int mi_row, int mi_col);
+int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs, int mi_row, int mi_col, int rate_limit);
 
 #ifdef __cplusplus
 }  // extern "C"

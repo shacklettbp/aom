@@ -94,7 +94,7 @@ int approx_segment_rate(AV1_COMMON *cm, MACROBLOCKD *xd, int segment_id, BLOCK_S
 }
 
 /* Perform RDO on the different segment possibilities to choose a segment */
-int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs, int mi_row, int mi_col) {
+int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs, int mi_row, int mi_col, int rate_limit) {
   unsigned int sse;
   int cur_segment, best_segment;
   int64_t rd_min;
@@ -115,12 +115,21 @@ int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs, int 
 
     quant = cpi->y_dequant[get_segdata(&cm->seg, cur_segment, SEG_LVL_ALT_Q) + cm->base_qindex][1];
     qstep = quant / 8;
-    av1_model_rd_from_var_lapndz(sse, num_pels_log2_lookup[bs], qstep, &mb_rate, &mb_distortion);
+
+    if (qstep < 120)
+      mb_rate = (sse * (280 - qstep)) >> (16 - AV1_PROB_COST_SHIFT);
+    else
+      mb_rate = 0;
+    mb_distortion = (sse * qstep) >> 8;
     mb_distortion = (sse * qstep) >> 8;
 
     seg_rate = approx_segment_rate(cm, xd, cur_segment, bs, mi_row, mi_col);
+    //printf("%d %d %d %d\n", qstep, seg_rate, mb_rate, mb_distortion);
 
     approx_rate = seg_rate + mb_rate;
+
+    if (approx_rate > rate_limit)
+      continue;
 
     rd = RDCOST(mb->rdmult, mb->rddiv, approx_rate, mb_distortion);
     if (rd < rd_min) {
@@ -129,9 +138,10 @@ int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs, int 
     }
   }
 
-  assert(best_segment != -1);
+  if (best_segment == -1)
+    best_segment = 0;
 
-  //printf("%d\n", best_segment);
+  printf("%d\n", best_segment);
 
   return best_segment;
 }
