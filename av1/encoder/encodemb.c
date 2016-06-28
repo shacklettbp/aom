@@ -67,11 +67,11 @@ static const int plane_rd_mult[PLANE_TYPES] = { 4, 2 };
 
 #define UPDATE_RD_COST()                                \
   {                                                     \
-    rd_cost0 = RDCOST(rdmult, rddiv, rate0, error0);    \
-    rd_cost1 = RDCOST(rdmult, rddiv, rate1, error1);    \
+    rd_cost0 = RDCOST(rdmult, rd_dist_scale, rate0, error0);    \
+    rd_cost1 = RDCOST(rdmult, rd_dist_scale, rate1, error1);    \
     if (rd_cost0 == rd_cost1) {                         \
-      rd_cost0 = RDTRUNC(rdmult, rddiv, rate0, error0); \
-      rd_cost1 = RDTRUNC(rdmult, rddiv, rate1, error1); \
+      rd_cost0 = RDTRUNC(rdmult, rd_dist_scale, rate0, error0); \
+      rd_cost1 = RDTRUNC(rdmult, rd_dist_scale, rate1, error1); \
     }                                                   \
   }
 
@@ -114,7 +114,7 @@ static int optimize_b(MACROBLOCK *mb, int plane, int block, TX_SIZE tx_size,
   const int16_t *const scan = so->scan;
   const int16_t *const nb = so->neighbors;
   int next = eob, sz = 0;
-  int64_t rdmult = mb->rdmult * plane_rd_mult[type], rddiv = mb->rddiv;
+  int64_t rdmult = mb->rdmult * plane_rd_mult[type], rd_dist_scale = mb->rd_dist_scale;
   int64_t rd_cost0, rd_cost1;
   int rate0, rate1, error0, error1;
   int16_t t0, t1;

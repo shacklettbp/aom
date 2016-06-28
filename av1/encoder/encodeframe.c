@@ -211,7 +211,7 @@ static void set_offsets(AV1_COMP *cpi, const TileInfo *const tile,
   av1_setup_src_planes(x, cpi->Source, mi_row, mi_col);
 
   // R/D setup.
-  x->rddiv = cpi->rd.RDDIV;
+  x->rd_dist_scale = cpi->rd.RD_DIST_SCALE;
   x->rdmult = cpi->rd.RDMULT;
 
   // Setup segment ID.
@@ -1060,7 +1060,7 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
   struct macroblock_plane *const p = x->plane;
   struct macroblockd_plane *const pd = xd->plane;
   const AQ_MODE aq_mode = cpi->oxcf.aq_mode;
-  int i, orig_rdmult;
+  int i, orig_rdmult, orig_rd_dist_scale;
 
   aom_clear_system_state();
 
@@ -1102,6 +1102,7 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
 
   // Save rdmult before it might be changed, so it can be restored later.
   orig_rdmult = x->rdmult;
+  orig_rd_dist_scale = x->rd_dist_scale;
 
   if (aq_mode == VARIANCE_AQ) {
     const int energy =
@@ -1123,6 +1124,12 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
     if (cyclic_refresh_segment_id_boosted(
             get_segment_id(cm, map, bsize, mi_row, mi_col)))
       x->rdmult = av1_cyclic_refresh_get_rdmult(cpi->cyclic_refresh);
+  } else if (aq_mode == RDO_AQ) {
+    double energy = av1_log_block_var(cpi, x, bsize) -
+                          ((cpi->oxcf.pass == 2) ? cpi->twopass.mb_av_energy : 10);
+        //bsize <= BLOCK_16X16 ? x->mb_energy : av1_block_energy(cpi, x, bsize);
+    double scale = 1.0 - 0.25*energy;
+    x->rd_dist_scale = AOMMAX(round(scale * (float)x->rd_dist_scale), 0);
   } else if (aq_mode) {
     av1_init_plane_quantizers(cpi, x);
     x->rdmult = av1_calc_new_rdmult(cpi, mbmi->segment_id);
@@ -1155,6 +1162,7 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
   }
 
   x->rdmult = orig_rdmult;
+  x->rd_dist_scale = orig_rd_dist_scale;
 
   // TODO(jingning) The rate-distortion optimization flow needs to be
   // refactored to provide proper exit/return handle.
@@ -1621,7 +1629,7 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
       if (none_rdc.rate < INT_MAX) {
         none_rdc.rate += cpi->partition_cost[pl][PARTITION_NONE];
         none_rdc.rdcost =
-            RDCOST(x->rdmult, x->rddiv, none_rdc.rate, none_rdc.dist);
+            RDCOST(x->rdmult, x->rd_dist_scale, none_rdc.rate, none_rdc.dist);
       }
 
       restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
@@ -1715,7 +1723,7 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
   if (last_part_rdc.rate < INT_MAX) {
     last_part_rdc.rate += cpi->partition_cost[pl][partition];
     last_part_rdc.rdcost =
-        RDCOST(x->rdmult, x->rddiv, last_part_rdc.rate, last_part_rdc.dist);
+        RDCOST(x->rdmult, x->rd_dist_scale, last_part_rdc.rate, last_part_rdc.dist);
   }
 
   if (do_partition_search && cpi->sf.adjust_partitioning_from_last_frame &&
@@ -1770,7 +1778,7 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
     if (chosen_rdc.rate < INT_MAX) {
       chosen_rdc.rate += cpi->partition_cost[pl][PARTITION_SPLIT];
       chosen_rdc.rdcost =
-          RDCOST(x->rdmult, x->rddiv, chosen_rdc.rate, chosen_rdc.dist);
+          RDCOST(x->rdmult, x->rd_dist_scale, chosen_rdc.rate, chosen_rdc.dist);
     }
   }
 
@@ -2189,7 +2197,7 @@ static void rd_pick_partition(AV1_COMP *cpi, ThreadData *td,
         pl = partition_plane_context(xd, mi_row, mi_col, bsize);
         this_rdc.rate += cpi->partition_cost[pl][PARTITION_NONE];
         this_rdc.rdcost =
-            RDCOST(x->rdmult, x->rddiv, this_rdc.rate, this_rdc.dist);
+            RDCOST(x->rdmult, x->rd_dist_scale, this_rdc.rate, this_rdc.dist);
       }
 
       if (this_rdc.rdcost < best_rdc.rdcost) {
@@ -2312,7 +2320,7 @@ static void rd_pick_partition(AV1_COMP *cpi, ThreadData *td,
     if (sum_rdc.rdcost < best_rdc.rdcost && i == 4) {
       pl = partition_plane_context(xd, mi_row, mi_col, bsize);
       sum_rdc.rate += cpi->partition_cost[pl][PARTITION_SPLIT];
-      sum_rdc.rdcost = RDCOST(x->rdmult, x->rddiv, sum_rdc.rate, sum_rdc.dist);
+      sum_rdc.rdcost = RDCOST(x->rdmult, x->rd_dist_scale, sum_rdc.rate, sum_rdc.dist);
 
       if (sum_rdc.rdcost < best_rdc.rdcost) {
         best_rdc = sum_rdc;
@@ -2362,7 +2370,7 @@ static void rd_pick_partition(AV1_COMP *cpi, ThreadData *td,
     if (sum_rdc.rdcost < best_rdc.rdcost) {
       pl = partition_plane_context(xd, mi_row, mi_col, bsize);
       sum_rdc.rate += cpi->partition_cost[pl][PARTITION_HORZ];
-      sum_rdc.rdcost = RDCOST(x->rdmult, x->rddiv, sum_rdc.rate, sum_rdc.dist);
+      sum_rdc.rdcost = RDCOST(x->rdmult, x->rd_dist_scale, sum_rdc.rate, sum_rdc.dist);
       if (sum_rdc.rdcost < best_rdc.rdcost) {
         best_rdc = sum_rdc;
         pc_tree->partitioning = PARTITION_HORZ;
@@ -2406,7 +2414,7 @@ static void rd_pick_partition(AV1_COMP *cpi, ThreadData *td,
     if (sum_rdc.rdcost < best_rdc.rdcost) {
       pl = partition_plane_context(xd, mi_row, mi_col, bsize);
       sum_rdc.rate += cpi->partition_cost[pl][PARTITION_VERT];
-      sum_rdc.rdcost = RDCOST(x->rdmult, x->rddiv, sum_rdc.rate, sum_rdc.dist);
+      sum_rdc.rdcost = RDCOST(x->rdmult, x->rd_dist_scale, sum_rdc.rate, sum_rdc.dist);
       if (sum_rdc.rdcost < best_rdc.rdcost) {
         best_rdc = sum_rdc;
         pc_tree->partitioning = PARTITION_VERT;

@@ -110,8 +110,8 @@ int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs) {
   rd_min = INT64_MAX;
   best_segment = -1;
 
-  cpi->fn_ptr[bs].vf(mb->plane[0].src.buf, mb->plane[0].src.stride, xd->plane[0].dst.buf, xd->plane[0].dst.stride, &sse);
-  var = sse;
+  //cpi->fn_ptr[bs].vf(mb->plane[0].src.buf, mb->plane[0].src.stride, xd->plane[0].dst.buf, xd->plane[0].dst.stride, &sse);
+  //var = sse;
   //var = (var * 256) >> num_pels_log2_lookup[bs];
   //var = mb->source_variance;
 
@@ -119,12 +119,12 @@ int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs) {
     int mb_rate, seg_rate, approx_rate, qstep, quant;
     int64_t mb_distortion, rd;
 
-    quant = cpi->y_dequant[get_segdata(&cm->seg, cur_segment, SEG_LVL_ALT_Q) + cm->base_qindex][1];
-    qstep = quant >> 3;
+    //quant = cpi->y_dequant[get_segdata(&cm->seg, cur_segment, SEG_LVL_ALT_Q) + cm->base_qindex][1];
+    //qstep = quant >> 3;
 
-    av1_model_rd_from_var_lapndz(var, num_pels_log2_lookup[bs], qstep, &mb_rate, &mb_distortion);
-    mb_distortion <<= 10;
-
+    //av1_model_rd_from_var_lapndz(var, num_pels_log2_lookup[bs], qstep, &mb_rate, &mb_distortion);
+    //mb_distortion <<= 10;
+    
     seg_rate = approx_segment_rate(cm, xd, cur_segment, bs);
 
     approx_rate = seg_rate + mb_rate;
@@ -132,7 +132,7 @@ int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs) {
     //if (approx_rate > rate_limit)
     //  continue;
 
-    rd = RDCOST(mb->rdmult, mb->rddiv, approx_rate, mb_distortion);
+    rd = RDCOST(mb->rdmult, mb->rd_dist_scale, approx_rate, mb_distortion);
     printf("aq: %d %d %d %d %d %d %d\n", var, num_pels_log2_lookup[bs], qstep, seg_rate, mb_rate, mb_distortion, rd);
     if (rd < rd_min) {
       rd_min = rd;

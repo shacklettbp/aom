@@ -254,8 +254,6 @@ static void model_rd_for_sb(AV1_COMP *cpi, BLOCK_SIZE bsize, MACROBLOCK *x,
       av1_model_rd_from_var_lapndz(sum_sse, num_pels_log2_lookup[bs],
                                    pd->dequant[1] >> dequant_shift, &rate,
                                    &dist);
-      printf("%d %d %d %d %d\n", sum_sse, num_pels_log2_lookup[bs],
-             pd->dequant[1] >> dequant_shift, rate, dist);
       rate_sum += rate;
       dist_sum += dist;
     }
@@ -508,15 +506,15 @@ static void block_rd_txfm(int plane, int block, int blk_row, int blk_col,
     dist_block(x, plane, block, tx_size, &dist, &sse);
   }
 
-  rd = RDCOST(x->rdmult, x->rddiv, 0, dist);
+  rd = RDCOST(x->rdmult, x->rd_dist_scale, 0, dist);
   if (args->this_rd + rd > args->best_rd) {
     args->exit_early = 1;
     return;
   }
 
   rate = rate_block(plane, block, blk_row, blk_col, tx_size, args);
-  rd1 = RDCOST(x->rdmult, x->rddiv, rate, dist);
-  rd2 = RDCOST(x->rdmult, x->rddiv, 0, sse);
+  rd1 = RDCOST(x->rdmult, x->rd_dist_scale, rate, dist);
+  rd2 = RDCOST(x->rdmult, x->rd_dist_scale, 0, sse);
 
   // TODO(jingning): temporarily enabled only for luma component
   rd = AOMMIN(rd1, rd2);
@@ -605,11 +603,11 @@ static void choose_largest_tx_size(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
                                      [intra_mode_to_tx_type_context[mbmi->mode]]
                                      [mbmi->tx_type];
       if (s)
-        this_rd = RDCOST(x->rdmult, x->rddiv, s1, psse);
+        this_rd = RDCOST(x->rdmult, x->rd_dist_scale, s1, psse);
       else
-        this_rd = RDCOST(x->rdmult, x->rddiv, r + s0, d);
+        this_rd = RDCOST(x->rdmult, x->rd_dist_scale, r + s0, d);
       if (is_inter && !xd->lossless[mbmi->segment_id] && !s)
-        this_rd = AOMMIN(this_rd, RDCOST(x->rdmult, x->rddiv, s1, psse));
+        this_rd = AOMMIN(this_rd, RDCOST(x->rdmult, x->rd_dist_scale, s1, psse));
 
       if (this_rd < ((best_tx_type == DCT_DCT) ? ext_tx_th : 1) * best_rd) {
         best_rd = this_rd;
@@ -720,18 +718,18 @@ static void choose_tx_size_from_rd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
 
       if (s) {
         if (is_inter) {
-          rd = RDCOST(x->rdmult, x->rddiv, s1, sse);
+          rd = RDCOST(x->rdmult, x->rd_dist_scale, s1, sse);
         } else {
-          rd = RDCOST(x->rdmult, x->rddiv, s1 + r_tx_size * tx_select, sse);
+          rd = RDCOST(x->rdmult, x->rd_dist_scale, s1 + r_tx_size * tx_select, sse);
         }
       } else {
-        rd = RDCOST(x->rdmult, x->rddiv, r + s0 + r_tx_size * tx_select, d);
+        rd = RDCOST(x->rdmult, x->rd_dist_scale, r + s0 + r_tx_size * tx_select, d);
       }
 
       if (tx_select && !(s && is_inter)) r += r_tx_size;
 
       if (is_inter && !xd->lossless[xd->mi[0]->mbmi.segment_id] && !s)
-        rd = AOMMIN(rd, RDCOST(x->rdmult, x->rddiv, s1, sse));
+        rd = AOMMIN(rd, RDCOST(x->rdmult, x->rd_dist_scale, s1, sse));
 
       // Early termination in transform size search.
       if (cpi->sf.tx_size_search_breakout &&
@@ -760,21 +758,12 @@ static void choose_tx_size_from_rd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
                    cpi->sf.use_fast_coef_costing);
 }
 
-static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
-                            int64_t *distortion, int *skip, int64_t *psse,
-                            BLOCK_SIZE bs, int64_t ref_best_rd) {
+static void choose_tx_size(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
+                           int64_t *distortion, int *skip, int64_t *psse,
+                           BLOCK_SIZE bs, int64_t ref_best_rd) {
   MACROBLOCKD *xd = &x->e_mbd;
   int64_t sse;
   int64_t *ret_sse = psse ? psse : &sse;
-
-  assert(bs == xd->mi[0]->mbmi.sb_type);
-
-  if (cpi->oxcf.aq_mode == RDO_AQ) {
-    MB_MODE_INFO *mbmi = &xd->mi[0]->mbmi;
-    mbmi->segment_id = av1_rdo_aq_select_segment(cpi, x, bs);
-    av1_init_plane_quantizers(cpi, x);
-    x->rdmult = av1_calc_new_rdmult(cpi, mbmi->segment_id);
-  }
 
   if (CONFIG_MISC_FIXES && xd->lossless[0]) {
     choose_smallest_tx_size(cpi, x, rate, distortion, skip, ret_sse,
@@ -786,6 +775,93 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
   } else {
     choose_tx_size_from_rd(cpi, x, rate, distortion, skip, ret_sse, ref_best_rd,
                            bs);
+  }
+}
+
+static int approx_segment_rate(AV1_COMMON *cm, MACROBLOCKD *xd, int segment_id, BLOCK_SIZE bs)
+{ 
+#if CONFIG_MISC_FIXES
+  struct segmentation_probs *segp = &cm->fc->seg;
+#else
+  struct segmentation_probs *segp = &cm->segp;
+#endif
+
+  int mi_row, mi_col;
+  aom_prob *probs;
+
+  mi_row = -xd->mb_to_top_edge / 8 / MI_SIZE;
+  mi_col = -xd->mb_to_left_edge / 8 / MI_SIZE;
+
+  if (frame_is_intra_only(cm) || cm->error_resilient_mode) {
+    probs = segp->tree_probs;
+  }
+  else {
+    const int pred_segment_id = get_segment_id(cm, cm->last_frame_seg_map, bs, mi_row, mi_col);
+    if (pred_segment_id == segment_id)
+      return 0;
+
+    probs = segp->pred_probs;
+  }
+  if (segment_id & 1) {
+    return av1_cost_one(probs[3 + (segment_id >> 2)]);
+  } else {
+    return av1_cost_zero(probs[3 + (segment_id >> 2)]);
+  }
+}
+
+static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
+                            int64_t *distortion, int *skip, int64_t *psse,
+                            BLOCK_SIZE bs, int64_t ref_best_rd) {
+  MACROBLOCKD *xd = &x->e_mbd;
+  int64_t sse;
+  int64_t *ret_sse = psse ? psse : &sse;
+
+  assert(bs == xd->mi[0]->mbmi.sb_type);
+
+  *distortion = INT64_MAX;
+  *rate = INT_MAX;
+
+  if (cpi->oxcf.aq_mode == RDO_AQ) {
+    int cur_segment;
+    MB_MODE_INFO *mbmi = &xd->mi[0]->mbmi;
+    int best_segment = -1;
+    int64_t best_rd = INT64_MAX;
+    for (cur_segment = 0; cur_segment < MAX_SEGMENTS; cur_segment++) {
+      int64_t rd, tmp_distortion, tmp_psse;
+      int tmp_rate, tmp_skip;
+
+      mbmi->segment_id = cur_segment;
+      av1_init_plane_quantizers(cpi, x);
+
+      // Encode the block
+      choose_tx_size(cpi, x, &tmp_rate, &tmp_distortion, &tmp_skip, &tmp_psse, bs, ref_best_rd);
+
+
+      if (tmp_rate == INT_MAX)
+        continue;
+
+      tmp_rate += approx_segment_rate(&cpi->common, xd, cur_segment, bs);
+
+      rd = RDCOST(x->rdmult, x->rd_dist_scale, tmp_rate, tmp_distortion);
+      printf("%d %d %d %d\n", rd, tmp_rate, tmp_distortion, x->rd_dist_scale);
+      if (rd < best_rd) {
+        best_segment = cur_segment;
+        *distortion = tmp_distortion;
+        *rate = tmp_rate;
+        *skip = tmp_skip;
+        *ret_sse = tmp_psse;
+      }
+    }
+
+    if (best_segment == -1 || best_rd < ref_best_rd)
+      return;
+
+    printf("best %d\n", best_segment);
+
+    mbmi->segment_id = best_segment;
+    av1_init_plane_quantizers(cpi, x);
+  } else {
+    choose_tx_size(cpi, x, rate, distortion, skip, psse, bs, ref_best_rd);
   }
 }
 
@@ -875,7 +951,7 @@ static int64_t rd_pick_intra4x4block(AV1_COMP *cpi, MACROBLOCK *x, int row,
             ratey += cost_coeffs(x, 0, block, tempa + idx, templ + idy, TX_4X4,
                                  so->scan, so->neighbors,
                                  cpi->sf.use_fast_coef_costing);
-            if (RDCOST(x->rdmult, x->rddiv, ratey, distortion) >= best_rd)
+            if (RDCOST(x->rdmult, x->rd_dist_scale, ratey, distortion) >= best_rd)
               goto next_highbd;
             av1_highbd_inv_txfm_add_4x4(BLOCK_OFFSET(pd->dqcoeff, block), dst,
                                         dst_stride, p->eobs[block], xd->bd,
@@ -893,7 +969,7 @@ static int64_t rd_pick_intra4x4block(AV1_COMP *cpi, MACROBLOCK *x, int row,
                 av1_highbd_block_error(coeff, BLOCK_OFFSET(pd->dqcoeff, block),
                                        16, &unused, xd->bd) >>
                 2;
-            if (RDCOST(x->rdmult, x->rddiv, ratey, distortion) >= best_rd)
+            if (RDCOST(x->rdmult, x->rd_dist_scale, ratey, distortion) >= best_rd)
               goto next_highbd;
             av1_highbd_inv_txfm_add_4x4(BLOCK_OFFSET(pd->dqcoeff, block), dst,
                                         dst_stride, p->eobs[block], xd->bd,
@@ -903,7 +979,7 @@ static int64_t rd_pick_intra4x4block(AV1_COMP *cpi, MACROBLOCK *x, int row,
       }
 
       rate += ratey;
-      this_rd = RDCOST(x->rdmult, x->rddiv, rate, distortion);
+      this_rd = RDCOST(x->rdmult, x->rd_dist_scale, rate, distortion);
 
       if (this_rd < best_rd) {
         *bestrate = rate;
@@ -970,7 +1046,7 @@ static int64_t rd_pick_intra4x4block(AV1_COMP *cpi, MACROBLOCK *x, int row,
           ratey += cost_coeffs(x, 0, block, tempa + idx, templ + idy, TX_4X4,
                                so->scan, so->neighbors,
                                cpi->sf.use_fast_coef_costing);
-          if (RDCOST(x->rdmult, x->rddiv, ratey, distortion) >= best_rd)
+          if (RDCOST(x->rdmult, x->rd_dist_scale, ratey, distortion) >= best_rd)
             goto next;
           av1_inv_txfm_add_4x4(BLOCK_OFFSET(pd->dqcoeff, block), dst,
                                dst_stride, p->eobs[block], DCT_DCT, 1);
@@ -986,7 +1062,7 @@ static int64_t rd_pick_intra4x4block(AV1_COMP *cpi, MACROBLOCK *x, int row,
           distortion += av1_block_error(coeff, BLOCK_OFFSET(pd->dqcoeff, block),
                                         16, &unused) >>
                         2;
-          if (RDCOST(x->rdmult, x->rddiv, ratey, distortion) >= best_rd)
+          if (RDCOST(x->rdmult, x->rd_dist_scale, ratey, distortion) >= best_rd)
             goto next;
           av1_inv_txfm_add_4x4(BLOCK_OFFSET(pd->dqcoeff, block), dst,
                                dst_stride, p->eobs[block], tx_type, 0);
@@ -995,7 +1071,7 @@ static int64_t rd_pick_intra4x4block(AV1_COMP *cpi, MACROBLOCK *x, int row,
     }
 
     rate += ratey;
-    this_rd = RDCOST(x->rdmult, x->rddiv, rate, distortion);
+    this_rd = RDCOST(x->rdmult, x->rd_dist_scale, rate, distortion);
 
     if (this_rd < best_rd) {
       *bestrate = rate;
@@ -1084,7 +1160,7 @@ static int64_t rd_pick_intra_sub_8x8_y_mode(AV1_COMP *cpi, MACROBLOCK *mb,
   *distortion = total_distortion;
   mic->mbmi.mode = mic->bmi[3].as_mode;
 
-  return RDCOST(mb->rdmult, mb->rddiv, cost, total_distortion);
+  return RDCOST(mb->rdmult, mb->rd_dist_scale, cost, total_distortion);
 }
 
 #if CONFIG_EXT_INTRA
@@ -1112,7 +1188,7 @@ static int64_t pick_intra_angle_routine_sby(
   this_rate = this_rate_tokenonly + mode_cost +
               write_uniform_cost(2 * max_angle_delta + 1,
                                  mbmi->intra_angle_delta[0] + max_angle_delta);
-  this_rd = RDCOST(x->rdmult, x->rddiv, this_rate, this_distortion);
+  this_rd = RDCOST(x->rdmult, x->rd_dist_scale, this_rate, this_distortion);
 
   if (this_rd < *best_rd) {
     *best_rd = this_rd;
@@ -1426,7 +1502,7 @@ static int64_t rd_pick_intra_sby_mode(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
                              max_angle_delta + mbmi->intra_angle_delta[0]);
     }
 #endif  // CONFIG_EXT_INTRA
-    this_rd = RDCOST(x->rdmult, x->rddiv, this_rate, this_distortion);
+    this_rd = RDCOST(x->rdmult, x->rd_dist_scale, this_rate, this_distortion);
 
     if (this_rd < best_rd) {
       mode_selected = mode;
@@ -1517,7 +1593,7 @@ static int64_t pick_intra_angle_routine_sbuv(
     return INT64_MAX;
 
   this_rate = this_rate_tokenonly + rate_overhead;
-  this_rd = RDCOST(x->rdmult, x->rddiv, this_rate, this_distortion);
+  this_rd = RDCOST(x->rdmult, x->rd_dist_scale, this_rate, this_distortion);
   if (this_rd < *best_rd) {
     *best_rd = this_rd;
     *best_angle_delta = mbmi->intra_angle_delta[1];
@@ -1633,7 +1709,7 @@ static int64_t rd_pick_intra_sbuv_mode(AV1_COMP *cpi, MACROBLOCK *x,
       continue;
     this_rate = this_rate_tokenonly + cpi->intra_uv_mode_cost[mbmi->mode][mode];
 #endif  // CONFIG_EXT_INTRA
-    this_rd = RDCOST(x->rdmult, x->rddiv, this_rate, this_distortion);
+    this_rd = RDCOST(x->rdmult, x->rd_dist_scale, this_rate, this_distortion);
 
     if (this_rd < best_rd) {
       mode_selected = mode;
@@ -1667,7 +1743,7 @@ static int64_t rd_sbuv_dcpred(const AV1_COMP *cpi, MACROBLOCK *x, int *rate,
                    bsize, INT64_MAX);
   *rate = *rate_tokenonly +
           cpi->intra_uv_mode_cost[x->e_mbd.mi[0]->mbmi.mode][DC_PRED];
-  return RDCOST(x->rdmult, x->rddiv, *rate, *distortion);
+  return RDCOST(x->rdmult, x->rd_dist_scale, *rate, *distortion);
 }
 
 static void choose_intra_uv_mode(AV1_COMP *cpi, MACROBLOCK *const x,
@@ -1872,8 +1948,8 @@ static int64_t encode_inter_mb_segment(AV1_COMP *cpi, MACROBLOCK *x,
       thisrate +=
           cost_coeffs(x, 0, k, ta + (k & 1), tl + (k >> 1), TX_4X4, so->scan,
                       so->neighbors, cpi->sf.use_fast_coef_costing);
-      rd1 = RDCOST(x->rdmult, x->rddiv, thisrate, thisdistortion >> 2);
-      rd2 = RDCOST(x->rdmult, x->rddiv, 0, thissse >> 2);
+      rd1 = RDCOST(x->rdmult, x->rd_dist_scale, thisrate, thisdistortion >> 2);
+      rd2 = RDCOST(x->rdmult, x->rd_dist_scale, 0, thissse >> 2);
       rd = AOMMIN(rd1, rd2);
       if (rd >= best_yrd) return INT64_MAX;
     }
@@ -1883,7 +1959,7 @@ static int64_t encode_inter_mb_segment(AV1_COMP *cpi, MACROBLOCK *x,
   *labelyrate = thisrate;
   *sse = thissse >> 2;
 
-  return RDCOST(x->rdmult, x->rddiv, *labelyrate, *distortion);
+  return RDCOST(x->rdmult, x->rd_dist_scale, *labelyrate, *distortion);
 }
 
 typedef struct {
@@ -2480,7 +2556,7 @@ static int64_t rd_pick_best_sub8x8_mode(
             bsi->rdstat[i][mode_idx].tl, idy, idx, mi_row, mi_col);
         if (bsi->rdstat[i][mode_idx].brdcost < INT64_MAX) {
           bsi->rdstat[i][mode_idx].brdcost +=
-              RDCOST(x->rdmult, x->rddiv, bsi->rdstat[i][mode_idx].brate, 0);
+              RDCOST(x->rdmult, x->rd_dist_scale, bsi->rdstat[i][mode_idx].brate, 0);
           bsi->rdstat[i][mode_idx].brate += bsi->rdstat[i][mode_idx].byrate;
           bsi->rdstat[i][mode_idx].eobs = p->eobs[i];
           if (num_4x4_blocks_wide > 1)
@@ -3132,7 +3208,7 @@ static int64_t handle_inter_mode(
   else
     *rate2 += cost_mv_ref(cpi, this_mode, mode_ctx);
 
-  if (RDCOST(x->rdmult, x->rddiv, *rate2, 0) > ref_best_rd &&
+  if (RDCOST(x->rdmult, x->rd_dist_scale, *rate2, 0) > ref_best_rd &&
       mbmi->mode != NEARESTMV)
     return INT64_MAX;
 
@@ -3169,7 +3245,7 @@ static int64_t handle_inter_mode(
   av1_build_inter_predictors_sb(xd, mi_row, mi_col, bsize);
   model_rd_for_sb(cpi, bsize, x, xd, &tmp_rate, &tmp_dist, &skip_txfm_sb,
                   &skip_sse_sb);
-  rd = RDCOST(x->rdmult, x->rddiv, rs + tmp_rate, tmp_dist);
+  rd = RDCOST(x->rdmult, x->rd_dist_scale, rs + tmp_rate, tmp_dist);
   memcpy(skip_txfm, x->skip_txfm, sizeof(skip_txfm));
   memcpy(bsse, x->bsse, sizeof(bsse));
 
@@ -3189,7 +3265,7 @@ static int64_t handle_inter_mode(
         av1_build_inter_predictors_sb(xd, mi_row, mi_col, bsize);
         model_rd_for_sb(cpi, bsize, x, xd, &tmp_rate, &tmp_dist, &tmp_skip_sb,
                         &tmp_skip_sse);
-        tmp_rd = RDCOST(x->rdmult, x->rddiv, tmp_rs + tmp_rate, tmp_dist);
+        tmp_rd = RDCOST(x->rdmult, x->rd_dist_scale, tmp_rs + tmp_rate, tmp_dist);
 
         if (tmp_rd < rd) {
           rd = tmp_rd;
@@ -3306,8 +3382,8 @@ static int64_t handle_inter_mode(
       *rate2 += *rate_y;
       *distortion += distortion_y;
 
-      rdcosty = RDCOST(x->rdmult, x->rddiv, *rate2, *distortion);
-      rdcosty = AOMMIN(rdcosty, RDCOST(x->rdmult, x->rddiv, 0, *psse));
+      rdcosty = RDCOST(x->rdmult, x->rd_dist_scale, *rate2, *distortion);
+      rdcosty = AOMMIN(rdcosty, RDCOST(x->rdmult, x->rd_dist_scale, 0, *psse));
 
       if (!super_block_uvrd(cpi, x, rate_uv, &distortion_uv, &skippable_uv,
                             &sseuv, bsize, ref_best_rd - rdcosty)) {
@@ -3334,11 +3410,11 @@ static int64_t handle_inter_mode(
         mbmi->skip = 0;
         // here mbmi->skip temporarily plays a role as what this_skip2 does
       } else if (!xd->lossless[mbmi->segment_id] &&
-                 (RDCOST(x->rdmult, x->rddiv,
+                 (RDCOST(x->rdmult, x->rd_dist_scale,
                          *rate_y + *rate_uv +
                              av1_cost_bit(av1_get_skip_prob(cm, xd), 0),
                          *distortion) >=
-                  RDCOST(x->rdmult, x->rddiv,
+                  RDCOST(x->rdmult, x->rd_dist_scale,
                          av1_cost_bit(av1_get_skip_prob(cm, xd), 1), *psse))) {
         *rate2 -= *rate_uv + *rate_y;
         *rate2 += av1_cost_bit(av1_get_skip_prob(cm, xd), 1);
@@ -3367,7 +3443,7 @@ static int64_t handle_inter_mode(
     }
 
 #if CONFIG_MOTION_VAR
-    tmp_rd = RDCOST(x->rdmult, x->rddiv, *rate2, *distortion);
+    tmp_rd = RDCOST(x->rdmult, x->rd_dist_scale, *rate2, *distortion);
     if (mbmi->motion_mode == SIMPLE_TRANSLATION || (tmp_rd < best_rd)) {
       best_mbmi = *mbmi;
       best_rd = tmp_rd;
@@ -3444,7 +3520,7 @@ void av1_rd_pick_intra_mode_sb(AV1_COMP *cpi, MACROBLOCK *x, RD_COST *rd_cost,
 
   ctx->mic = *xd->mi[0];
   ctx->mbmi_ext = *x->mbmi_ext;
-  rd_cost->rdcost = RDCOST(x->rdmult, x->rddiv, rd_cost->rate, rd_cost->dist);
+  rd_cost->rdcost = RDCOST(x->rdmult, x->rd_dist_scale, rd_cost->rate, rd_cost->dist);
 }
 
 // This function is designed to apply a bias or adjustment to an rd value based
@@ -4073,14 +4149,14 @@ void av1_rd_pick_inter_mode_sb(AV1_COMP *cpi, TileDataEnc *tile_data,
         rate2 += cpi->drl_mode_cost[drl_ctx][0];
 
         if (this_rd < INT64_MAX) {
-          if (RDCOST(x->rdmult, x->rddiv, rate_y + rate_uv + rate_skip0,
+          if (RDCOST(x->rdmult, x->rd_dist_scale, rate_y + rate_uv + rate_skip0,
                      distortion2) <
-              RDCOST(x->rdmult, x->rddiv, rate_skip1, total_sse))
+              RDCOST(x->rdmult, x->rd_dist_scale, rate_skip1, total_sse))
             tmp_ref_rd =
-                RDCOST(x->rdmult, x->rddiv, rate2 + rate_skip0, distortion2);
+                RDCOST(x->rdmult, x->rd_dist_scale, rate2 + rate_skip0, distortion2);
           else
             tmp_ref_rd =
-                RDCOST(x->rdmult, x->rddiv,
+                RDCOST(x->rdmult, x->rd_dist_scale,
                        rate2 + rate_skip1 - rate_y - rate_uv, total_sse);
         }
 
@@ -4148,16 +4224,16 @@ void av1_rd_pick_inter_mode_sb(AV1_COMP *cpi, TileDataEnc *tile_data,
 
           if (tmp_alt_rd < INT64_MAX) {
 #if CONFIG_MOTION_VAR
-            tmp_alt_rd = RDCOST(x->rdmult, x->rddiv, tmp_rate, tmp_dist);
+            tmp_alt_rd = RDCOST(x->rdmult, x->rd_dist_scale, tmp_rate, tmp_dist);
 #else
-            if (RDCOST(x->rdmult, x->rddiv,
+            if (RDCOST(x->rdmult, x->rd_dist_scale,
                        tmp_rate_y + tmp_rate_uv + rate_skip0, tmp_dist) <
-                RDCOST(x->rdmult, x->rddiv, rate_skip1, tmp_sse))
+                RDCOST(x->rdmult, x->rd_dist_scale, rate_skip1, tmp_sse))
               tmp_alt_rd =
-                  RDCOST(x->rdmult, x->rddiv, tmp_rate + rate_skip0, tmp_dist);
+                  RDCOST(x->rdmult, x->rd_dist_scale, tmp_rate + rate_skip0, tmp_dist);
             else
               tmp_alt_rd = RDCOST(
-                  x->rdmult, x->rddiv,
+                  x->rdmult, x->rd_dist_scale,
                   tmp_rate + rate_skip1 - tmp_rate_y - tmp_rate_uv, tmp_sse);
 #endif  // CONFIG_MOTION_VAR
           }
@@ -4221,12 +4297,12 @@ void av1_rd_pick_inter_mode_sb(AV1_COMP *cpi, TileDataEnc *tile_data,
         rate2 += av1_cost_bit(av1_get_skip_prob(cm, xd), 1);
       } else if (ref_frame != INTRA_FRAME && !xd->lossless[mbmi->segment_id]) {
 #if CONFIG_REF_MV
-        if (RDCOST(x->rdmult, x->rddiv, rate_y + rate_uv + rate_skip0,
+        if (RDCOST(x->rdmult, x->rd_dist_scale, rate_y + rate_uv + rate_skip0,
                    distortion2) <
-            RDCOST(x->rdmult, x->rddiv, rate_skip1, total_sse)) {
+            RDCOST(x->rdmult, x->rd_dist_scale, rate_skip1, total_sse)) {
 #else
-        if (RDCOST(x->rdmult, x->rddiv, rate_y + rate_uv, distortion2) <
-            RDCOST(x->rdmult, x->rddiv, 0, total_sse)) {
+        if (RDCOST(x->rdmult, x->rd_dist_scale, rate_y + rate_uv, distortion2) <
+            RDCOST(x->rdmult, x->rd_dist_scale, 0, total_sse)) {
 #endif
           // Add in the cost of the no skip flag.
           rate2 += av1_cost_bit(av1_get_skip_prob(cm, xd), 0);
@@ -4244,11 +4320,11 @@ void av1_rd_pick_inter_mode_sb(AV1_COMP *cpi, TileDataEnc *tile_data,
       }
 
       // Calculate the final RD estimate for this mode.
-      this_rd = RDCOST(x->rdmult, x->rddiv, rate2, distortion2);
+      this_rd = RDCOST(x->rdmult, x->rd_dist_scale, rate2, distortion2);
 #if CONFIG_MOTION_VAR
     } else {
       this_skip2 = mbmi->skip;
-      this_rd = RDCOST(x->rdmult, x->rddiv, rate2, distortion2);
+      this_rd = RDCOST(x->rdmult, x->rd_dist_scale, rate2, distortion2);
 #endif  // CONFIG_MOTION_VAR
     }
 
@@ -4311,8 +4387,8 @@ void av1_rd_pick_inter_mode_sb(AV1_COMP *cpi, TileDataEnc *tile_data,
         hybrid_rate = rate2 + compmode_cost;
       }
 
-      single_rd = RDCOST(x->rdmult, x->rddiv, single_rate, distortion2);
-      hybrid_rd = RDCOST(x->rdmult, x->rddiv, hybrid_rate, distortion2);
+      single_rd = RDCOST(x->rdmult, x->rd_dist_scale, single_rate, distortion2);
+      hybrid_rd = RDCOST(x->rdmult, x->rd_dist_scale, hybrid_rate, distortion2);
 
       if (!comp_pred) {
         if (single_rd < best_pred_rd[SINGLE_REFERENCE])
@@ -4559,7 +4635,7 @@ void av1_rd_pick_inter_mode_sb_seg_skip(AV1_COMP *cpi, TileDataEnc *tile_data,
   // Estimate the reference frame signaling cost and add it
   // to the rolling cost variable.
   rate2 += ref_costs_single[LAST_FRAME];
-  this_rd = RDCOST(x->rdmult, x->rddiv, rate2, distortion2);
+  this_rd = RDCOST(x->rdmult, x->rd_dist_scale, rate2, distortion2);
 
   rd_cost->rate = rate2;
   rd_cost->dist = distortion2;
@@ -4845,7 +4921,7 @@ void av1_rd_pick_inter_mode_sub8x8(AV1_COMP *cpi, TileDataEnc *tile_data,
 
             if (tmp_rd == INT64_MAX) continue;
             rs = av1_get_switchable_rate(cpi, xd);
-            rs_rd = RDCOST(x->rdmult, x->rddiv, rs, 0);
+            rs_rd = RDCOST(x->rdmult, x->rd_dist_scale, rs, 0);
             if (cm->interp_filter == SWITCHABLE) tmp_rd += rs_rd;
 
             newbest = (tmp_rd < tmp_best_rd);
@@ -4918,8 +4994,8 @@ void av1_rd_pick_inter_mode_sub8x8(AV1_COMP *cpi, TileDataEnc *tile_data,
       compmode_cost = av1_cost_bit(comp_mode_p, comp_pred);
 
       tmp_best_rdu =
-          best_rd - AOMMIN(RDCOST(x->rdmult, x->rddiv, rate2, distortion2),
-                           RDCOST(x->rdmult, x->rddiv, 0, total_sse));
+          best_rd - AOMMIN(RDCOST(x->rdmult, x->rd_dist_scale, rate2, distortion2),
+                           RDCOST(x->rdmult, x->rd_dist_scale, 0, total_sse));
 
       if (tmp_best_rdu > 0) {
         // If even the 'Y' rd value of split is higher than best so far
@@ -4952,8 +5028,8 @@ void av1_rd_pick_inter_mode_sub8x8(AV1_COMP *cpi, TileDataEnc *tile_data,
       // always coded in the bitstream at the mode info level.
 
       if (ref_frame != INTRA_FRAME && !xd->lossless[mbmi->segment_id]) {
-        if (RDCOST(x->rdmult, x->rddiv, rate_y + rate_uv, distortion2) <
-            RDCOST(x->rdmult, x->rddiv, 0, total_sse)) {
+        if (RDCOST(x->rdmult, x->rd_dist_scale, rate_y + rate_uv, distortion2) <
+            RDCOST(x->rdmult, x->rd_dist_scale, 0, total_sse)) {
           // Add in the cost of the no skip flag.
           rate2 += av1_cost_bit(av1_get_skip_prob(cm, xd), 0);
         } else {
@@ -4972,7 +5048,7 @@ void av1_rd_pick_inter_mode_sub8x8(AV1_COMP *cpi, TileDataEnc *tile_data,
       }
 
       // Calculate the final RD estimate for this mode.
-      this_rd = RDCOST(x->rdmult, x->rddiv, rate2, distortion2);
+      this_rd = RDCOST(x->rdmult, x->rd_dist_scale, rate2, distortion2);
     }
 
     if (!disable_skip && ref_frame == INTRA_FRAME) {
@@ -5000,7 +5076,7 @@ void av1_rd_pick_inter_mode_sub8x8(AV1_COMP *cpi, TileDataEnc *tile_data,
         rd_cost->rdcost = this_rd;
         best_rd = this_rd;
         best_yrd =
-            best_rd - RDCOST(x->rdmult, x->rddiv, rate_uv, distortion_uv);
+            best_rd - RDCOST(x->rdmult, x->rd_dist_scale, rate_uv, distortion_uv);
         best_mbmode = *mbmi;
         best_skip2 = this_skip2;
         if (!x->select_tx_size) swap_block_ptr(x, ctx, 1, 0, 0, max_plane);
@@ -5023,8 +5099,8 @@ void av1_rd_pick_inter_mode_sub8x8(AV1_COMP *cpi, TileDataEnc *tile_data,
         hybrid_rate = rate2 + compmode_cost;
       }
 
-      single_rd = RDCOST(x->rdmult, x->rddiv, single_rate, distortion2);
-      hybrid_rd = RDCOST(x->rdmult, x->rddiv, hybrid_rate, distortion2);
+      single_rd = RDCOST(x->rdmult, x->rd_dist_scale, single_rate, distortion2);
+      hybrid_rd = RDCOST(x->rdmult, x->rd_dist_scale, hybrid_rate, distortion2);
 
       if (!comp_pred && single_rd < best_pred_rd[SINGLE_REFERENCE])
         best_pred_rd[SINGLE_REFERENCE] = single_rd;
