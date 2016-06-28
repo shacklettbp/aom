@@ -836,14 +836,13 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
       // Encode the block
       choose_tx_size(cpi, x, &tmp_rate, &tmp_distortion, &tmp_skip, &tmp_psse, bs, ref_best_rd);
 
-
       if (tmp_rate == INT_MAX)
         continue;
 
       tmp_rate += approx_segment_rate(&cpi->common, xd, cur_segment, bs);
 
       rd = RDCOST(x->rdmult, x->rd_dist_scale, tmp_rate, tmp_distortion);
-      printf("%d %d %d %d\n", rd, tmp_rate, tmp_distortion, x->rd_dist_scale);
+      //printf("%d %d %d %d\n", rd, tmp_rate, tmp_distortion, x->rd_dist_scale);
       if (rd < best_rd) {
         best_segment = cur_segment;
         *distortion = tmp_distortion;
@@ -856,7 +855,7 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
     if (best_segment == -1 || best_rd < ref_best_rd)
       return;
 
-    printf("best %d\n", best_segment);
+    //printf("best %d\n", best_segment);
 
     mbmi->segment_id = best_segment;
     av1_init_plane_quantizers(cpi, x);
