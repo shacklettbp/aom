@@ -1049,15 +1049,6 @@ void av1_setup_src_planes(MACROBLOCK *x, const YV12_BUFFER_CONFIG *src,
                      x->e_mbd.plane[i].subsampling_y);
 }
 
-static int calc_new_rdmult(const AV1_COMP *cpi, const int segment_id) {
-  int segment_qindex;
-
-  const AV1_COMMON *cm = &cpi->common;
-  aom_clear_system_state();
-  segment_qindex = av1_get_qindex(&cm->seg, segment_id, cm->base_qindex);
-  return av1_compute_rd_mult(cpi, segment_qindex + cm->y_dc_delta_q);
-}
-
 static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
                              MACROBLOCK *const x, int mi_row, int mi_col,
                              RD_COST *rd_cost, BLOCK_SIZE bsize,
@@ -1123,8 +1114,6 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
           cm->seg.update_map ? cpi->segmentation_map : cm->last_frame_seg_map;
       mbmi->segment_id = get_segment_id(cm, map, bsize, mi_row, mi_col);
     }
-  } else if (aq_mode == RDO_AQ) {
-    mbmi->segment_id = av1_rdo_aq_select_segment(cpi, x, bsize, mi_row, mi_col, rd_cost->rate);
   }
 
   if (aq_mode == CYCLIC_REFRESH_AQ) {
@@ -1136,7 +1125,7 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
       x->rdmult = av1_cyclic_refresh_get_rdmult(cpi->cyclic_refresh);
   } else if (aq_mode) {
     av1_init_plane_quantizers(cpi, x);
-    x->rdmult = calc_new_rdmult(cpi, mbmi->segment_id);
+    x->rdmult = av1_calc_new_rdmult(cpi, mbmi->segment_id);
   }
 
   // Find best coding mode & reconstruct the MB so it is available

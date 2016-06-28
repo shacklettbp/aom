@@ -15,6 +15,7 @@
 #include "aom_ports/system_state.h"
 
 #include "av1/encoder/aq_rdo.h"
+#include "av1/encoder/aq_variance.h"
 
 #include "aom_ports/system_state.h"
 #include "av1/common/pred_common.h"
@@ -24,10 +25,8 @@
 #include "av1/encoder/rdopt.h"
 #include "av1/encoder/segmentation.h"
 
-DECLARE_ALIGNED(16, static const uint8_t, av1_64_zeros[64]) = { 0 };
-
 static const double rate_ratio[MAX_SEGMENTS] = { 0.25, 0.5, 0.75, 1.0,
-                                                 1.25, 1.5, 2.0,  2.5 };
+                                                 1.25, 1.5, 1.75,  2.0 };
 
 void av1_rdo_aq_frame_setup(AV1_COMP *cpi) {
   AV1_COMMON *cm = &cpi->common;
@@ -66,7 +65,7 @@ void av1_rdo_aq_frame_setup(AV1_COMP *cpi) {
   }
 }
 
-int approx_segment_rate(AV1_COMMON *cm, MACROBLOCKD *xd, int segment_id, BLOCK_SIZE bs, int mi_row, int mi_col)
+static int approx_segment_rate(AV1_COMMON *cm, MACROBLOCKD *xd, int segment_id, BLOCK_SIZE bs)
 { 
 #if CONFIG_MISC_FIXES
   struct segmentation_probs *segp = &cm->fc->seg;
@@ -74,7 +73,11 @@ int approx_segment_rate(AV1_COMMON *cm, MACROBLOCKD *xd, int segment_id, BLOCK_S
   struct segmentation_probs *segp = &cm->segp;
 #endif
 
+  int mi_row, mi_col;
   aom_prob *probs;
+
+  mi_row = -xd->mb_to_top_edge / 8 / MI_SIZE;
+  mi_col = -xd->mb_to_left_edge / 8 / MI_SIZE;
 
   if (frame_is_intra_only(cm) || cm->error_resilient_mode) {
     probs = segp->tree_probs;
@@ -94,8 +97,8 @@ int approx_segment_rate(AV1_COMMON *cm, MACROBLOCKD *xd, int segment_id, BLOCK_S
 }
 
 /* Perform RDO on the different segment possibilities to choose a segment */
-int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs, int mi_row, int mi_col, int rate_limit) {
-  unsigned int sse;
+int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs) {
+  unsigned int sse, var;
   int cur_segment, best_segment;
   int64_t rd_min;
   MACROBLOCKD *xd;
@@ -107,31 +110,30 @@ int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs, int 
   rd_min = INT64_MAX;
   best_segment = -1;
 
-  cpi->fn_ptr[bs].vf(mb->plane[0].src.buf, mb->plane[0].src.stride, av1_64_zeros, 0, &sse);
+  cpi->fn_ptr[bs].vf(mb->plane[0].src.buf, mb->plane[0].src.stride, xd->plane[0].dst.buf, xd->plane[0].dst.stride, &sse);
+  var = sse;
+  //var = (var * 256) >> num_pels_log2_lookup[bs];
+  //var = mb->source_variance;
 
   for (cur_segment = 0; cur_segment < MAX_SEGMENTS; cur_segment++) {
     int mb_rate, seg_rate, approx_rate, qstep, quant;
     int64_t mb_distortion, rd;
 
     quant = cpi->y_dequant[get_segdata(&cm->seg, cur_segment, SEG_LVL_ALT_Q) + cm->base_qindex][1];
-    qstep = quant / 8;
+    qstep = quant >> 3;
 
-    if (qstep < 120)
-      mb_rate = (sse * (280 - qstep)) >> (16 - AV1_PROB_COST_SHIFT);
-    else
-      mb_rate = 0;
-    mb_distortion = (sse * qstep) >> 8;
-    mb_distortion = (sse * qstep) >> 8;
+    av1_model_rd_from_var_lapndz(var, num_pels_log2_lookup[bs], qstep, &mb_rate, &mb_distortion);
+    mb_distortion <<= 10;
 
-    seg_rate = approx_segment_rate(cm, xd, cur_segment, bs, mi_row, mi_col);
-    //printf("%d %d %d %d\n", qstep, seg_rate, mb_rate, mb_distortion);
+    seg_rate = approx_segment_rate(cm, xd, cur_segment, bs);
 
     approx_rate = seg_rate + mb_rate;
 
-    if (approx_rate > rate_limit)
-      continue;
+    //if (approx_rate > rate_limit)
+    //  continue;
 
     rd = RDCOST(mb->rdmult, mb->rddiv, approx_rate, mb_distortion);
+    printf("aq: %d %d %d %d %d %d %d\n", var, num_pels_log2_lookup[bs], qstep, seg_rate, mb_rate, mb_distortion, rd);
     if (rd < rd_min) {
       rd_min = rd;
       best_segment = cur_segment;

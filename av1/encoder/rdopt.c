@@ -32,6 +32,7 @@
 #include "av1/common/scan.h"
 #include "av1/common/seg_common.h"
 
+#include "av1/encoder/aq_rdo.h"
 #include "av1/encoder/aq_variance.h"
 #include "av1/encoder/cost.h"
 #include "av1/encoder/encodemb.h"
@@ -253,6 +254,8 @@ static void model_rd_for_sb(AV1_COMP *cpi, BLOCK_SIZE bsize, MACROBLOCK *x,
       av1_model_rd_from_var_lapndz(sum_sse, num_pels_log2_lookup[bs],
                                    pd->dequant[1] >> dequant_shift, &rate,
                                    &dist);
+      printf("%d %d %d %d %d\n", sum_sse, num_pels_log2_lookup[bs],
+             pd->dequant[1] >> dequant_shift, rate, dist);
       rate_sum += rate;
       dist_sum += dist;
     }
@@ -262,6 +265,15 @@ static void model_rd_for_sb(AV1_COMP *cpi, BLOCK_SIZE bsize, MACROBLOCK *x,
   *skip_sse_sb = total_sse << 4;
   *out_rate_sum = (int)rate_sum;
   *out_dist_sum = dist_sum << 4;
+}
+
+int av1_calc_new_rdmult(const AV1_COMP *cpi, const int segment_id) {
+  int segment_qindex;
+
+  const AV1_COMMON *cm = &cpi->common;
+  aom_clear_system_state();
+  segment_qindex = av1_get_qindex(&cm->seg, segment_id, cm->base_qindex);
+  return av1_compute_rd_mult(cpi, segment_qindex + cm->y_dc_delta_q);
 }
 
 int64_t av1_block_error_c(const tran_low_t *coeff, const tran_low_t *dqcoeff,
@@ -756,6 +768,13 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
   int64_t *ret_sse = psse ? psse : &sse;
 
   assert(bs == xd->mi[0]->mbmi.sb_type);
+
+  if (cpi->oxcf.aq_mode == RDO_AQ) {
+    MB_MODE_INFO *mbmi = &xd->mi[0]->mbmi;
+    mbmi->segment_id = av1_rdo_aq_select_segment(cpi, x, bs);
+    av1_init_plane_quantizers(cpi, x);
+    x->rdmult = av1_calc_new_rdmult(cpi, mbmi->segment_id);
+  }
 
   if (CONFIG_MISC_FIXES && xd->lossless[0]) {
     choose_smallest_tx_size(cpi, x, rate, distortion, skip, ret_sse,

@@ -62,6 +62,8 @@ void av1_rd_pick_inter_mode_sub8x8(struct AV1_COMP *cpi,
                                    PICK_MODE_CONTEXT *ctx,
                                    int64_t best_rd_so_far);
 
+int av1_calc_new_rdmult(const AV1_COMP *cpi, const int segment_id);
+
 static INLINE const YV12_BUFFER_CONFIG *get_upsampled_ref(AV1_COMP *cpi,
                                                           const int ref) {
   // Use up-sampled reference frames.
