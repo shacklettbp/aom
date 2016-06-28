@@ -1128,7 +1128,7 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
     double energy = av1_log_block_var(cpi, x, bsize) -
                           ((cpi->oxcf.pass == 2) ? cpi->twopass.mb_av_energy : 10);
         //bsize <= BLOCK_16X16 ? x->mb_energy : av1_block_energy(cpi, x, bsize);
-    double scale = 1.0 - (3.f/8.f)*energy;
+    double scale = 1.0 - (7.f/8.f)*energy;
     x->rd_dist_scale = AOMMAX(round(scale * (float)x->rd_dist_scale), 0);
   } else if (aq_mode) {
     av1_init_plane_quantizers(cpi, x);
@@ -1152,6 +1152,7 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
                                     bsize, ctx, best_rd);
     }
   }
+  //printf("%p outer: %d\n", mbmi, mbmi->segment_id);
 
   // Examine the resulting rate and for AQ mode 2 make a segment choice.
   if ((rd_cost->rate != INT_MAX) && (aq_mode == COMPLEXITY_AQ) &&

@@ -855,7 +855,7 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
     if (best_segment == -1 || best_rd < ref_best_rd)
       return;
 
-    //printf("best %d\n", best_segment);
+    //printf("%p best %d\n", mbmi, best_segment);
 
     mbmi->segment_id = best_segment;
     av1_init_plane_quantizers(cpi, x);
