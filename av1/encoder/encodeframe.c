@@ -1148,7 +1148,7 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
                                     bsize, ctx, best_rd);
     }
   }
-  //printf("%p outer: %d\n", mbmi, mbmi->segment_id);
+  //printf("best %d\n", mbmi->segment_id);
 
   // Examine the resulting rate and for AQ mode 2 make a segment choice.
   if ((rd_cost->rate != INT_MAX) && (aq_mode == COMPLEXITY_AQ) &&

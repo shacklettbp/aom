@@ -782,19 +782,21 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
                             int64_t *distortion, int *skip, int64_t *psse,
                             BLOCK_SIZE bs, int64_t ref_best_rd) {
   MACROBLOCKD *xd = &x->e_mbd;
+  MB_MODE_INFO *mbmi = &xd->mi[0]->mbmi;
   int64_t sse;
   int64_t *ret_sse = psse ? psse : &sse;
 
-  assert(bs == xd->mi[0]->mbmi.sb_type);
+  assert(bs == mbmi->sb_type);
 
   *distortion = INT64_MAX;
   *rate = INT_MAX;
 
   if (cpi->oxcf.aq_mode == RDO_AQ) {
+    int old_segment = mbmi->segment_id;
     int cur_segment, seg_rate;
-    MB_MODE_INFO *mbmi = &xd->mi[0]->mbmi;
     int best_segment = -1;
     int64_t best_rd = INT64_MAX;
+
     for (cur_segment = 0; cur_segment < MAX_SEGMENTS; cur_segment++) {
       int64_t rd, tmp_distortion, tmp_psse;
       int tmp_rate, tmp_skip;
@@ -822,12 +824,12 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
       }
     }
 
-    if (best_segment == -1 || best_rd < ref_best_rd)
-      return;
+    if (best_segment == -1 || best_rd < ref_best_rd) {
+      mbmi->segment_id = old_segment;
+    } else {
+      mbmi->segment_id = best_segment;
+    }
 
-    //printf("%p best %d\n", mbmi, best_segment);
-
-    mbmi->segment_id = best_segment;
     av1_init_plane_quantizers(cpi, x);
   } else {
     choose_tx_size(cpi, x, rate, distortion, skip, psse, bs, ref_best_rd);
