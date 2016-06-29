@@ -791,7 +791,7 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
   *rate = INT_MAX;
 
   if (cpi->oxcf.aq_mode == RDO_AQ) {
-    int cur_segment;
+    int cur_segment, seg_rate;
     MB_MODE_INFO *mbmi = &xd->mi[0]->mbmi;
     int best_segment = -1;
     int64_t best_rd = INT64_MAX;
@@ -808,10 +808,11 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
       if (tmp_rate == INT_MAX)
         continue;
 
-      tmp_rate += av1_rdo_aq_seg_rate(&cpi->common, xd, cur_segment, bs);
+      seg_rate = av1_rdo_aq_seg_rate(&cpi->common, xd, cur_segment, bs);
 
+      tmp_rate += seg_rate;
       rd = RDCOST(x->rdmult, x->rd_dist_scale, tmp_rate, tmp_distortion);
-      printf("%d %d %d %d\n", rd, tmp_rate, tmp_distortion, x->rd_dist_scale);
+      //printf("%d %d %d %d %d\n", rd, seg_rate, tmp_rate, tmp_distortion, x->rd_dist_scale);
       if (rd < best_rd) {
         best_segment = cur_segment;
         *distortion = tmp_distortion;
@@ -824,7 +825,7 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
     if (best_segment == -1 || best_rd < ref_best_rd)
       return;
 
-    printf("%p best %d\n", mbmi, best_segment);
+    //printf("%p best %d\n", mbmi, best_segment);
 
     mbmi->segment_id = best_segment;
     av1_init_plane_quantizers(cpi, x);

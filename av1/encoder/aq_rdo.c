@@ -148,9 +148,12 @@ int av1_rdo_aq_dist_scale(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
   unsigned int var = total_variance(cpi, x, bs);
   aom_clear_system_state();
 
-  double scale = 0.176782*pow(var, 0.173283);
+  //double scale = 0.176782*pow(var, 0.173283);
+  double scale = 5.65669*pow(var, -0.173283);
 
-  return AOMMAX(round((double)x->rd_dist_scale * scale), 0);
+  //printf("scale: %f %u\n", scale, var);
+
+  return round((double)x->rd_dist_scale * scale);
 }
 
 /* Perform RDO on the different segment possibilities to choose a segment */
