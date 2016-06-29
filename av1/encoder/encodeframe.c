@@ -1125,11 +1125,7 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
             get_segment_id(cm, map, bsize, mi_row, mi_col)))
       x->rdmult = av1_cyclic_refresh_get_rdmult(cpi->cyclic_refresh);
   } else if (aq_mode == RDO_AQ) {
-    double energy = av1_log_block_var(cpi, x, bsize) -
-                          ((cpi->oxcf.pass == 2) ? cpi->twopass.mb_av_energy : 10);
-        //bsize <= BLOCK_16X16 ? x->mb_energy : av1_block_energy(cpi, x, bsize);
-    double scale = 1.0 - (7.f/8.f)*energy;
-    x->rd_dist_scale = AOMMAX(round(scale * (float)x->rd_dist_scale), 0);
+    x->rd_dist_scale = av1_rdo_aq_dist_scale(cpi, x, bsize);
   } else if (aq_mode) {
     av1_init_plane_quantizers(cpi, x);
     x->rdmult = av1_calc_new_rdmult(cpi, mbmi->segment_id);

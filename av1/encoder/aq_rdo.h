@@ -19,6 +19,8 @@ extern "C" {
 #endif
 
 void av1_rdo_aq_frame_setup(AV1_COMP *cpi);
+int av1_rdo_aq_seg_rate(AV1_COMMON *cm, MACROBLOCKD *xd, int segment_id, BLOCK_SIZE bs);
+int av1_rdo_aq_dist_scale(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs);
 int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs);
 
 #ifdef __cplusplus

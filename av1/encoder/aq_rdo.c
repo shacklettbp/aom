@@ -28,6 +28,11 @@
 static const double rate_ratio[MAX_SEGMENTS] = { 0.25, 0.5, 0.75, 1.0,
                                                  1.25, 1.5, 1.75,  2.0 };
 
+DECLARE_ALIGNED(16, static const uint8_t, av1_64_zeros[64]) = { 0 };
+#if CONFIG_AOM_HIGHBITDEPTH
+DECLARE_ALIGNED(16, static const uint16_t, av1_highbd_64_zeros[64]) = { 0 };
+#endif
+
 void av1_rdo_aq_frame_setup(AV1_COMP *cpi) {
   AV1_COMMON *cm = &cpi->common;
   struct segmentation *seg = &cm->seg;
@@ -65,7 +70,7 @@ void av1_rdo_aq_frame_setup(AV1_COMP *cpi) {
   }
 }
 
-static int approx_segment_rate(AV1_COMMON *cm, MACROBLOCKD *xd, int segment_id, BLOCK_SIZE bs)
+int av1_rdo_aq_seg_rate(AV1_COMMON *cm, MACROBLOCKD *xd, int segment_id, BLOCK_SIZE bs)
 { 
 #if CONFIG_MISC_FIXES
   struct segmentation_probs *segp = &cm->fc->seg;
@@ -94,6 +99,58 @@ static int approx_segment_rate(AV1_COMMON *cm, MACROBLOCKD *xd, int segment_id, 
   } else {
     return av1_cost_zero(probs[3 + (segment_id >> 2)]);
   }
+}
+
+static unsigned block_variance(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bsize, int plane_idx) {
+  unsigned int var, sse;
+
+  MACROBLOCKD *xd = &x->e_mbd;
+  struct macroblock_plane *const p = &x->plane[plane_idx];
+  struct macroblockd_plane *const pd = &xd->plane[plane_idx];
+  BLOCK_SIZE bs = get_plane_block_size(bsize, pd);
+  int right_overflow, bottom_overflow;
+
+  const uint8_t *zeros =
+#if CONFIG_AOM_HIGHBITDEPTH
+    ((xd->cur_buf->flags & YV12_FLAG_HIGHBITDEPTH) ? CONVERT_TO_BYTEPTR(av1_highbd_64_zeros) : av1_64_zeros);
+#else
+    av1_64_zeros;
+#endif
+  
+  if (bs == BLOCK_INVALID)
+    return 0; // FIXME this happens with 4x4, what's the "correct" way
+
+  right_overflow =
+      (xd->mb_to_right_edge < 0) ? ((-xd->mb_to_right_edge) >> 3) : 0;
+  bottom_overflow =
+      (xd->mb_to_bottom_edge < 0) ? ((-xd->mb_to_bottom_edge) >> 3) : 0;
+
+  //if (right_overflow || bottom_overflow) {
+  //  const int bw = 8 * num_8x8_blocks_wide_lookup[bs] - right_overflow;
+  //  const int bh = 8 * num_8x8_blocks_high_lookup[bs] - bottom_overflow;
+  //} else {
+  //  var = cpi->fn_ptr[bs].vf(x->plane[0].src.buf, x->plane[0].src.stride, zeros, 0, &sse);
+  //}
+
+  return cpi->fn_ptr[bs].vf(p->src.buf, p->src.stride, zeros, 0, &sse);
+}
+
+static unsigned total_variance(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
+  int i;
+  unsigned int total_var = 0;
+  for (i = 0; i < MAX_MB_PLANE; i++)
+    total_var += block_variance(cpi, x, bs, i);
+
+  return total_var;
+}
+
+int av1_rdo_aq_dist_scale(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
+  unsigned int var = total_variance(cpi, x, bs);
+  aom_clear_system_state();
+
+  double scale = 0.176782*pow(var, 0.173283);
+
+  return AOMMAX(round((double)x->rd_dist_scale * scale), 0);
 }
 
 /* Perform RDO on the different segment possibilities to choose a segment */
@@ -125,7 +182,7 @@ int av1_rdo_aq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs) {
     //av1_model_rd_from_var_lapndz(var, num_pels_log2_lookup[bs], qstep, &mb_rate, &mb_distortion);
     //mb_distortion <<= 10;
     
-    seg_rate = approx_segment_rate(cm, xd, cur_segment, bs);
+    seg_rate = av1_rdo_aq_seg_rate(cm, xd, cur_segment, bs);
 
     approx_rate = seg_rate + mb_rate;
 

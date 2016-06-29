@@ -778,37 +778,6 @@ static void choose_tx_size(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
   }
 }
 
-static int approx_segment_rate(AV1_COMMON *cm, MACROBLOCKD *xd, int segment_id, BLOCK_SIZE bs)
-{ 
-#if CONFIG_MISC_FIXES
-  struct segmentation_probs *segp = &cm->fc->seg;
-#else
-  struct segmentation_probs *segp = &cm->segp;
-#endif
-
-  int mi_row, mi_col;
-  aom_prob *probs;
-
-  mi_row = -xd->mb_to_top_edge / 8 / MI_SIZE;
-  mi_col = -xd->mb_to_left_edge / 8 / MI_SIZE;
-
-  if (frame_is_intra_only(cm) || cm->error_resilient_mode) {
-    probs = segp->tree_probs;
-  }
-  else {
-    const int pred_segment_id = get_segment_id(cm, cm->last_frame_seg_map, bs, mi_row, mi_col);
-    if (pred_segment_id == segment_id)
-      return 0;
-
-    probs = segp->pred_probs;
-  }
-  if (segment_id & 1) {
-    return av1_cost_one(probs[3 + (segment_id >> 2)]);
-  } else {
-    return av1_cost_zero(probs[3 + (segment_id >> 2)]);
-  }
-}
-
 static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
                             int64_t *distortion, int *skip, int64_t *psse,
                             BLOCK_SIZE bs, int64_t ref_best_rd) {
@@ -839,10 +808,10 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
       if (tmp_rate == INT_MAX)
         continue;
 
-      tmp_rate += approx_segment_rate(&cpi->common, xd, cur_segment, bs);
+      tmp_rate += av1_rdo_aq_seg_rate(&cpi->common, xd, cur_segment, bs);
 
       rd = RDCOST(x->rdmult, x->rd_dist_scale, tmp_rate, tmp_distortion);
-      //printf("%d %d %d %d\n", rd, tmp_rate, tmp_distortion, x->rd_dist_scale);
+      printf("%d %d %d %d\n", rd, tmp_rate, tmp_distortion, x->rd_dist_scale);
       if (rd < best_rd) {
         best_segment = cur_segment;
         *distortion = tmp_distortion;
@@ -855,7 +824,7 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
     if (best_segment == -1 || best_rd < ref_best_rd)
       return;
 
-    //printf("%p best %d\n", mbmi, best_segment);
+    printf("%p best %d\n", mbmi, best_segment);
 
     mbmi->segment_id = best_segment;
     av1_init_plane_quantizers(cpi, x);
