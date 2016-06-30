@@ -21,8 +21,8 @@
 #include "av1/encoder/segmentation.h"
 #include "aom_ports/system_state.h"
 
-static const double q_ratio[MAX_SEGMENTS] = { 0.5, 0.65, 0.85, 1.0,
-                                              1.15, 1.35, 1.7, 2.0 };
+static const double q_ratio[MAX_SEGMENTS] = { 0.5, 0.65, 0.80, 1.0,
+                                              1.25, 1.5, 2.0, 2.5 };
 
 DECLARE_ALIGNED(16, static const uint8_t, av1_64_zeros[64]) = { 0 };
 #if CONFIG_AOM_HIGHBITDEPTH
