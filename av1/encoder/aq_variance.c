@@ -92,6 +92,8 @@ static unsigned block_variance(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bsize, i
   bottom_overflow =
       (xd->mb_to_bottom_edge < 0) ? ((-xd->mb_to_bottom_edge) >> 3) : 0;
 
+  //assert(!right_overflow && !bottom_overflow);
+
   //if (right_overflow || bottom_overflow) {
   //  const int bw = 8 * num_8x8_blocks_wide_lookup[bs] - right_overflow;
   //  const int bh = 8 * num_8x8_blocks_high_lookup[bs] - bottom_overflow;
@@ -118,7 +120,8 @@ unsigned int av1_vaq_segment_id(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
   aom_clear_system_state();
 
   var = total_variance(cpi, x, bs);
-  ideal_ratio = 0.176782*pow(var, 0.173283);
+  //ideal_ratio = 0.176782*pow(var, 0.173283);
+  ideal_ratio = 5.65669*pow(var, -0.173283);
 
   min_delta = INFINITY;
   for (i = 0; i < MAX_SEGMENTS; i++) {
@@ -129,6 +132,8 @@ unsigned int av1_vaq_segment_id(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
       min_delta = delta;
     }
   }
+
+  //printf("var: %u, ratio: %f, segment: %u\n", var, ideal_ratio, best_segment);
 
   return best_segment;
 }
