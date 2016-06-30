@@ -21,27 +21,13 @@
 #include "av1/encoder/segmentation.h"
 #include "aom_ports/system_state.h"
 
-#define ENERGY_MIN (-4)
-#define ENERGY_MAX (1)
-#define ENERGY_SPAN (ENERGY_MAX - ENERGY_MIN + 1)
-#define ENERGY_IN_BOUNDS(energy) \
-  assert((energy) >= ENERGY_MIN && (energy) <= ENERGY_MAX)
-
-static const double rate_ratio[MAX_SEGMENTS] = { 2.5,  2.0, 1.5, 1.0,
-                                                 0.75, 1.0, 1.0, 1.0 };
-static const int segment_id[ENERGY_SPAN] = { 0, 1, 1, 2, 3, 4 };
-
-#define SEGMENT_ID(i) segment_id[(i)-ENERGY_MIN]
+static const double rate_ratio[MAX_SEGMENTS] = { 0.25, 0.5, 0.75, 1.0,
+                                                 1.25, 1.5, 2.0, 2.5 };
 
 DECLARE_ALIGNED(16, static const uint8_t, av1_64_zeros[64]) = { 0 };
 #if CONFIG_AOM_HIGHBITDEPTH
 DECLARE_ALIGNED(16, static const uint16_t, av1_highbd_64_zeros[64]) = { 0 };
 #endif
-
-unsigned int av1_vaq_segment_id(int energy) {
-  ENERGY_IN_BOUNDS(energy);
-  return SEGMENT_ID(energy);
-}
 
 void av1_vaq_frame_setup(AV1_COMP *cpi) {
   AV1_COMMON *cm = &cpi->common;
@@ -82,123 +68,67 @@ void av1_vaq_frame_setup(AV1_COMP *cpi) {
   }
 }
 
-/* TODO(agrange, paulwilkins): The block_variance calls the unoptimized versions
- * of variance() and highbd_8_variance(). It should not.
- */
-static void aq_variance(const uint8_t *a, int a_stride, const uint8_t *b,
-                        int b_stride, int w, int h, unsigned int *sse,
-                        int *sum) {
-  int i, j;
-
-  *sum = 0;
-  *sse = 0;
-
-  for (i = 0; i < h; i++) {
-    for (j = 0; j < w; j++) {
-      const int diff = a[j] - b[j];
-      *sum += diff;
-      *sse += diff * diff;
-    }
-
-    a += a_stride;
-    b += b_stride;
-  }
-}
-
-#if CONFIG_AOM_HIGHBITDEPTH
-static void aq_highbd_variance64(const uint8_t *a8, int a_stride,
-                                 const uint8_t *b8, int b_stride, int w, int h,
-                                 uint64_t *sse, uint64_t *sum) {
-  int i, j;
-
-  uint16_t *a = CONVERT_TO_SHORTPTR(a8);
-  uint16_t *b = CONVERT_TO_SHORTPTR(b8);
-  *sum = 0;
-  *sse = 0;
-
-  for (i = 0; i < h; i++) {
-    for (j = 0; j < w; j++) {
-      const int diff = a[j] - b[j];
-      *sum += diff;
-      *sse += diff * diff;
-    }
-    a += a_stride;
-    b += b_stride;
-  }
-}
-
-static void aq_highbd_8_variance(const uint8_t *a8, int a_stride,
-                                 const uint8_t *b8, int b_stride, int w, int h,
-                                 unsigned int *sse, int *sum) {
-  uint64_t sse_long = 0;
-  uint64_t sum_long = 0;
-  aq_highbd_variance64(a8, a_stride, b8, b_stride, w, h, &sse_long, &sum_long);
-  *sse = (unsigned int)sse_long;
-  *sum = (int)sum_long;
-}
-#endif  // CONFIG_AOM_HIGHBITDEPTH
-
-static unsigned int block_variance(AV1_COMP *cpi, MACROBLOCK *x,
-                                   BLOCK_SIZE bs) {
-  MACROBLOCKD *xd = &x->e_mbd;
+static unsigned block_variance(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bsize, int plane_idx) {
   unsigned int var, sse;
-  int right_overflow =
+
+  MACROBLOCKD *xd = &x->e_mbd;
+  struct macroblock_plane *const p = &x->plane[plane_idx];
+  struct macroblockd_plane *const pd = &xd->plane[plane_idx];
+  BLOCK_SIZE bs = get_plane_block_size(bsize, pd);
+  int right_overflow, bottom_overflow;
+
+  const uint8_t *zeros =
+#if CONFIG_AOM_HIGHBITDEPTH
+    ((xd->cur_buf->flags & YV12_FLAG_HIGHBITDEPTH) ? CONVERT_TO_BYTEPTR(av1_highbd_64_zeros) : av1_64_zeros);
+#else
+    av1_64_zeros;
+#endif
+  
+  if (bs == BLOCK_INVALID)
+    return 0; // FIXME this happens with 4x4, what's the "correct" way
+
+  right_overflow =
       (xd->mb_to_right_edge < 0) ? ((-xd->mb_to_right_edge) >> 3) : 0;
-  int bottom_overflow =
+  bottom_overflow =
       (xd->mb_to_bottom_edge < 0) ? ((-xd->mb_to_bottom_edge) >> 3) : 0;
 
-  if (right_overflow || bottom_overflow) {
-    const int bw = 8 * num_8x8_blocks_wide_lookup[bs] - right_overflow;
-    const int bh = 8 * num_8x8_blocks_high_lookup[bs] - bottom_overflow;
-    int avg;
-#if CONFIG_AOM_HIGHBITDEPTH
-    if (xd->cur_buf->flags & YV12_FLAG_HIGHBITDEPTH) {
-      aq_highbd_8_variance(x->plane[0].src.buf, x->plane[0].src.stride,
-                           CONVERT_TO_BYTEPTR(av1_highbd_64_zeros), 0, bw, bh,
-                           &sse, &avg);
-      sse >>= 2 * (xd->bd - 8);
-      avg >>= (xd->bd - 8);
-    } else {
-      aq_variance(x->plane[0].src.buf, x->plane[0].src.stride, av1_64_zeros, 0,
-                  bw, bh, &sse, &avg);
+  //if (right_overflow || bottom_overflow) {
+  //  const int bw = 8 * num_8x8_blocks_wide_lookup[bs] - right_overflow;
+  //  const int bh = 8 * num_8x8_blocks_high_lookup[bs] - bottom_overflow;
+  //} else {
+  //  var = cpi->fn_ptr[bs].vf(x->plane[0].src.buf, x->plane[0].src.stride, zeros, 0, &sse);
+  //}
+
+  return cpi->fn_ptr[bs].vf(p->src.buf, p->src.stride, zeros, 0, &sse);
+}
+
+static unsigned total_variance(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
+  int i;
+  unsigned int total_var = 0;
+  for (i = 0; i < MAX_MB_PLANE; i++)
+    total_var += block_variance(cpi, x, bs, i);
+
+  return total_var;
+}
+
+unsigned int av1_vaq_segment_id(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
+  int i;
+  unsigned int var, best_segment;
+  double ideal_ratio, min_delta, delta;
+  aom_clear_system_state();
+
+  var = total_variance(cpi, x, bs);
+  ideal_ratio = 0.176782*pow(var, 0.173283);
+
+  min_delta = INFINITY;
+  for (i = 0; i < MAX_SEGMENTS; i++) {
+    delta = fabs(rate_ratio[i] - ideal_ratio);
+
+    if (delta < min_delta) {
+      best_segment = i;
+      min_delta = delta;
     }
-#else
-    aq_variance(x->plane[0].src.buf, x->plane[0].src.stride, av1_64_zeros, 0,
-                bw, bh, &sse, &avg);
-#endif  // CONFIG_AOM_HIGHBITDEPTH
-    var = sse - (((int64_t)avg * avg) / (bw * bh));
-    return ((uint64_t)var * 256) / (bw * bh);
-  } else {
-#if CONFIG_AOM_HIGHBITDEPTH
-    if (xd->cur_buf->flags & YV12_FLAG_HIGHBITDEPTH) {
-      var =
-          cpi->fn_ptr[bs].vf(x->plane[0].src.buf, x->plane[0].src.stride,
-                             CONVERT_TO_BYTEPTR(av1_highbd_64_zeros), 0, &sse);
-    } else {
-      var = cpi->fn_ptr[bs].vf(x->plane[0].src.buf, x->plane[0].src.stride,
-                               av1_64_zeros, 0, &sse);
-    }
-#else
-    var = cpi->fn_ptr[bs].vf(x->plane[0].src.buf, x->plane[0].src.stride,
-                             av1_64_zeros, 0, &sse);
-#endif  // CONFIG_AOM_HIGHBITDEPTH
-    return ((uint64_t)var * 256) >> num_pels_log2_lookup[bs];
   }
-}
 
-double av1_log_block_var(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
-  unsigned int var = block_variance(cpi, x, bs);
-  aom_clear_system_state();
-  return log(var + 1.0);
-}
-
-#define DEFAULT_E_MIDPOINT 10.0
-int av1_block_energy(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
-  double energy;
-  double energy_midpoint;
-  aom_clear_system_state();
-  energy_midpoint =
-      (cpi->oxcf.pass == 2) ? cpi->twopass.mb_av_energy : DEFAULT_E_MIDPOINT;
-  energy = av1_log_block_var(cpi, x, bs) - energy_midpoint;
-  return clamp((int)round(energy), ENERGY_MIN, ENERGY_MAX);
+  return best_segment;
 }

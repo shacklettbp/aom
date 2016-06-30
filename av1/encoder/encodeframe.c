@@ -1105,16 +1105,18 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
   orig_rd_dist_scale = x->rd_dist_scale;
 
   if (aq_mode == VARIANCE_AQ) {
-    const int energy =
-        bsize <= BLOCK_16X16 ? x->mb_energy : av1_block_energy(cpi, x, bsize);
-    if (cm->frame_type == KEY_FRAME || cpi->refresh_alt_ref_frame ||
-        (cpi->refresh_golden_frame && !cpi->rc.is_src_frame_alt_ref)) {
-      mbmi->segment_id = av1_vaq_segment_id(energy);
-    } else {
-      const uint8_t *const map =
-          cm->seg.update_map ? cpi->segmentation_map : cm->last_frame_seg_map;
-      mbmi->segment_id = get_segment_id(cm, map, bsize, mi_row, mi_col);
-    }
+    mbmi->segment_id = av1_vaq_segment_id(cpi, x, bsize);
+    //printf("vaq: %d\n", mbmi->segment_id);
+    //const int energy =
+    //    bsize <= BLOCK_16X16 ? x->mb_energy : av1_block_energy(cpi, x, bsize);
+    //if (cm->frame_type == KEY_FRAME || cpi->refresh_alt_ref_frame ||
+    //    (cpi->refresh_golden_frame && !cpi->rc.is_src_frame_alt_ref)) {
+    //  mbmi->segment_id = av1_vaq_segment_id(energy);
+    //} else {
+    //  const uint8_t *const map =
+    //      cm->seg.update_map ? cpi->segmentation_map : cm->last_frame_seg_map;
+    //  mbmi->segment_id = get_segment_id(cm, map, bsize, mi_row, mi_col);
+    //}
   }
 
   if (aq_mode == CYCLIC_REFRESH_AQ) {
@@ -1590,11 +1592,6 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
 
   pc_tree->partitioning = partition;
   save_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
-
-  if (bsize == BLOCK_16X16 && cpi->oxcf.aq_mode) {
-    set_offsets(cpi, tile_info, x, mi_row, mi_col, bsize);
-    x->mb_energy = av1_block_energy(cpi, x, bsize);
-  }
 
   if (do_partition_search &&
       cpi->sf.partition_search_type == SEARCH_PARTITION &&
@@ -2095,9 +2092,6 @@ static void rd_pick_partition(AV1_COMP *cpi, ThreadData *td,
   best_rdc.rdcost = best_rd;
 
   set_offsets(cpi, tile_info, x, mi_row, mi_col, bsize);
-
-  if (bsize == BLOCK_16X16 && cpi->oxcf.aq_mode)
-    x->mb_energy = av1_block_energy(cpi, x, bsize);
 
   if (cpi->sf.cb_partition_search && bsize == BLOCK_16X16) {
     int cb_partition_search_ctrl =

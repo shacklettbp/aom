@@ -81,7 +81,6 @@ struct macroblock {
   int sadperbit4;
   int rd_dist_scale;
   int rdmult;
-  int mb_energy;
   int *m_search_count_ptr;
   int *ex_search_count_ptr;
 

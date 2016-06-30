@@ -18,11 +18,8 @@
 extern "C" {
 #endif
 
-unsigned int av1_vaq_segment_id(int energy);
 void av1_vaq_frame_setup(AV1_COMP *cpi);
-
-int av1_block_energy(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs);
-double av1_log_block_var(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs);
+unsigned int av1_vaq_segment_id(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs);
 
 #ifdef __cplusplus
 }  // extern "C"

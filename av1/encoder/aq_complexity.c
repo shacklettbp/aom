@@ -141,7 +141,7 @@ void av1_caq_select_segment(AV1_COMP *cpi, MACROBLOCK *mb, BLOCK_SIZE bs,
                                            : DEFAULT_LV_THRESH;
 
     av1_setup_src_planes(mb, cpi->Source, mi_row, mi_col);
-    logvar = av1_log_block_var(cpi, mb, bs);
+    logvar = 1.0; //FIXME av1_log_block_var(cpi, mb, bs);
 
     segment = AQ_C_SEGMENTS - 1;  // Just in case no break out below.
     for (i = 0; i < AQ_C_SEGMENTS; ++i) {
