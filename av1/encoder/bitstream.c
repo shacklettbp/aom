@@ -725,6 +725,8 @@ static void write_modes_b(AV1_COMP *cpi, const TileInfo *const tile,
   set_mi_row_col(xd, tile, mi_row, num_8x8_blocks_high_lookup[m->mbmi.sb_type],
                  mi_col, num_8x8_blocks_wide_lookup[m->mbmi.sb_type],
                  cm->mi_rows, cm->mi_cols);
+
+  //printf("seg: %d, pos: %d %d bs: %d\n", m->mbmi.segment_id, mi_row, mi_col, m->mbmi.sb_type);
   if (frame_is_intra_only(cm)) {
     write_mb_modes_kf(cm, xd, xd->mi, w);
   } else {
