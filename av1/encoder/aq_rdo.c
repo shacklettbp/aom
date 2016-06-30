@@ -25,9 +25,6 @@
 #include "av1/encoder/rdopt.h"
 #include "av1/encoder/segmentation.h"
 
-static const double rate_ratio[MAX_SEGMENTS] = { 0.25, 0.5, 0.75, 1.0,
-                                                 1.25, 1.5, 1.75,  2.0 };
-
 DECLARE_ALIGNED(16, static const uint8_t, av1_64_zeros[64]) = { 0 };
 #if CONFIG_AOM_HIGHBITDEPTH
 DECLARE_ALIGNED(16, static const uint16_t, av1_highbd_64_zeros[64]) = { 0 };
@@ -37,6 +34,9 @@ void av1_rdo_aq_frame_setup(AV1_COMP *cpi) {
   AV1_COMMON *cm = &cpi->common;
   struct segmentation *seg = &cm->seg;
   int i;
+  static const double rate_ratio[MAX_SEGMENTS] = { 0.5, 0.65, 0.80, 1.0,
+                                                   1.25, 1.5, 2.0, 2.5 };
+
 
   av1_enable_segmentation(seg);
   av1_clearall_segfeatures(seg);
