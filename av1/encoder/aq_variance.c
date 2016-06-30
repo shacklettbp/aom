@@ -21,8 +21,8 @@
 #include "av1/encoder/segmentation.h"
 #include "aom_ports/system_state.h"
 
-static const double q_ratio[MAX_SEGMENTS] = { 0.25, 0.5, 0.75, 1.0,
-                                              1.25, 1.5, 2.0, 2.5 };
+static const double q_ratio[MAX_SEGMENTS] = { 0.5, 0.65, 0.85, 1.0,
+                                              1.15, 1.35, 1.7, 2.0 };
 
 DECLARE_ALIGNED(16, static const uint8_t, av1_64_zeros[64]) = { 0 };
 #if CONFIG_AOM_HIGHBITDEPTH
@@ -104,7 +104,8 @@ static unsigned block_variance(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bsize, i
   //  var = cpi->fn_ptr[bs].vf(x->plane[0].src.buf, x->plane[0].src.stride, zeros, 0, &sse);
   //}
 
-  return (256 * (uint64_t)cpi->fn_ptr[bs].vf(p->src.buf, p->src.stride, zeros, 0, &sse)) >> num_pels_log2_lookup[bs];
+  return (uint64_t)cpi->fn_ptr[bs].vf(p->src.buf, p->src.stride, zeros, 0, &sse);
+  //return (256 * (uint64_t)cpi->fn_ptr[bs].vf(p->src.buf, p->src.stride, zeros, 0, &sse)) >> num_pels_log2_lookup[bs];
 }
 
 static unsigned total_variance(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
@@ -129,6 +130,7 @@ unsigned int av1_vaq_segment_id(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
   } else {
     ideal_ratio = 0.176782*pow(var, 0.173283);
   }
+  //ideal_ratio = 0.176782*pow(var, 0.173283);
 
   min_delta = INFINITY;
   for (i = 0; i < MAX_SEGMENTS; i++) {
@@ -140,7 +142,7 @@ unsigned int av1_vaq_segment_id(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
     }
   }
 
-  //printf("var: %u, ratio: %f, segment: %u energy: %f\n", var, ideal_ratio, best_segment, 1.0397*(log2(var) - cpi->twopass.mb_av_energy));
+  printf("var: %u, ratio: %f, segment: %u\n", var, ideal_ratio, best_segment);
 
   return best_segment;
 }
