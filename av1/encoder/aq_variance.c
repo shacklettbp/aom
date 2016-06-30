@@ -123,8 +123,12 @@ unsigned int av1_vaq_segment_id(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
   aom_clear_system_state();
 
   var = total_variance(cpi, x, bs);
-  ideal_ratio = 0.176782*pow(var, 0.173283);
-  //ideal_ratio = 5.65669*pow(var, -0.173283);
+  if (cpi->oxcf.pass == 2) {
+    double midpoint = cpi->twopass.mb_av_energy;
+    ideal_ratio = exp(-0.120111*midpoint)*pow(var, 0.173283);
+  } else {
+    ideal_ratio = 0.176782*pow(var, 0.173283);
+  }
 
   min_delta = INFINITY;
   for (i = 0; i < MAX_SEGMENTS; i++) {
@@ -136,7 +140,7 @@ unsigned int av1_vaq_segment_id(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
     }
   }
 
-  printf("var: %u, ratio: %f, segment: %u\n", var, ideal_ratio, best_segment);
+  //printf("var: %u, ratio: %f, segment: %u energy: %f\n", var, ideal_ratio, best_segment, 1.0397*(log2(var) - cpi->twopass.mb_av_energy));
 
   return best_segment;
 }
