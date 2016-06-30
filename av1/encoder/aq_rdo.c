@@ -132,7 +132,7 @@ static unsigned block_variance(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bsize, i
   //  var = cpi->fn_ptr[bs].vf(x->plane[0].src.buf, x->plane[0].src.stride, zeros, 0, &sse);
   //}
 
-  return cpi->fn_ptr[bs].vf(p->src.buf, p->src.stride, zeros, 0, &sse);
+  return (256 * (uint64_t)cpi->fn_ptr[bs].vf(p->src.buf, p->src.stride, zeros, 0, &sse)) >> num_pels_log2_lookup[bs];
 }
 
 static unsigned total_variance(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {

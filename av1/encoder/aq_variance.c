@@ -21,8 +21,8 @@
 #include "av1/encoder/segmentation.h"
 #include "aom_ports/system_state.h"
 
-static const double rate_ratio[MAX_SEGMENTS] = { 0.25, 0.5, 0.75, 1.0,
-                                                 1.25, 1.5, 2.0, 2.5 };
+static const double q_ratio[MAX_SEGMENTS] = { 0.25, 0.5, 0.75, 1.0,
+                                              1.25, 1.5, 2.0, 2.5 };
 
 DECLARE_ALIGNED(16, static const uint8_t, av1_64_zeros[64]) = { 0 };
 #if CONFIG_AOM_HIGHBITDEPTH
@@ -45,9 +45,17 @@ void av1_vaq_frame_setup(AV1_COMP *cpi) {
     aom_clear_system_state();
 
     for (i = 0; i < MAX_SEGMENTS; ++i) {
-      int qindex_delta =
-          av1_compute_qdelta_by_rate(&cpi->rc, cm->frame_type, cm->base_qindex,
-                                     rate_ratio[i], cm->bit_depth);
+      int base_q;
+      int qindex_delta;
+
+      // No need to enable SEG_LVL_ALT_Q for this segment.
+      if (q_ratio[i] == 1.0) {
+        continue;
+      }
+
+      /* Calculate delta */
+      base_q = av1_convert_qindex_to_q(cm->base_qindex, cm->bit_depth);
+      qindex_delta = av1_compute_qdelta(&cpi->rc, base_q, base_q * q_ratio[i], cm->bit_depth);
 
       // We don't allow qindex 0 in a segment if the base value is not 0.
       // Q index 0 (lossless) implies 4x4 encoding only and in AQ mode a segment
@@ -55,11 +63,6 @@ void av1_vaq_frame_setup(AV1_COMP *cpi) {
       // This could lead to an illegal combination of partition size and q.
       if ((cm->base_qindex != 0) && ((cm->base_qindex + qindex_delta) == 0)) {
         qindex_delta = -cm->base_qindex + 1;
-      }
-
-      // No need to enable SEG_LVL_ALT_Q for this segment.
-      if (rate_ratio[i] == 1.0) {
-        continue;
       }
 
       av1_set_segdata(seg, i, SEG_LVL_ALT_Q, qindex_delta);
@@ -101,7 +104,7 @@ static unsigned block_variance(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bsize, i
   //  var = cpi->fn_ptr[bs].vf(x->plane[0].src.buf, x->plane[0].src.stride, zeros, 0, &sse);
   //}
 
-  return (256 * cpi->fn_ptr[bs].vf(p->src.buf, p->src.stride, zeros, 0, &sse)) >> num_pels_log2_lookup[bs];
+  return (256 * (uint64_t)cpi->fn_ptr[bs].vf(p->src.buf, p->src.stride, zeros, 0, &sse)) >> num_pels_log2_lookup[bs];
 }
 
 static unsigned total_variance(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
@@ -120,12 +123,12 @@ unsigned int av1_vaq_segment_id(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
   aom_clear_system_state();
 
   var = total_variance(cpi, x, bs);
-  //ideal_ratio = 0.176782*pow(var, 0.173283);
-  ideal_ratio = 5.65669*pow(var, -0.173283);
+  ideal_ratio = 0.176782*pow(var, 0.173283);
+  //ideal_ratio = 5.65669*pow(var, -0.173283);
 
   min_delta = INFINITY;
   for (i = 0; i < MAX_SEGMENTS; i++) {
-    delta = fabs(rate_ratio[i] - ideal_ratio);
+    delta = fabs(q_ratio[i] - ideal_ratio);
 
     if (delta < min_delta) {
       best_segment = i;
