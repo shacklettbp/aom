@@ -124,13 +124,13 @@ unsigned int av1_vaq_segment_id(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
   aom_clear_system_state();
 
   var = total_variance(cpi, x, bs);
-  if (cpi->oxcf.pass == 2) {
-    double midpoint = cpi->twopass.mb_av_energy;
-    ideal_ratio = exp(-0.120111*midpoint)*pow(var, 0.173283);
-  } else {
-    ideal_ratio = 0.176782*pow(var, 0.173283);
-  }
-  //ideal_ratio = 0.176782*pow(var, 0.173283);
+  //if (cpi->oxcf.pass == 2) {
+  //  double midpoint = cpi->twopass.mb_av_energy;
+  //  ideal_ratio = exp(-0.120111*midpoint)*pow(var, 0.173283);
+  //} else {
+  //  ideal_ratio = 0.176782*pow(var, 0.173283);
+  //}
+  ideal_ratio = 0.176782*pow(var, 0.173283);
 
   min_delta = INFINITY;
   for (i = 0; i < MAX_SEGMENTS; i++) {
