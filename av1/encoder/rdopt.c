@@ -824,12 +824,14 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
       //printf("%d: %d %ld %d %d %ld\n", cur_segment, tmp_rate - seg_rate, tmp_distortion, x->rd_dist_scale, x->rdmult, rd);
       if (rd < best_rd) {
         best_segment = cur_segment;
+        best_rd = rd;
         *distortion = tmp_distortion;
         *rate = tmp_rate;
         *skip = tmp_skip;
         *ret_sse = tmp_psse;
       }
     }
+    //printf("best_segment: %d\n", best_segment);
 
     if (best_segment == -1 || best_rd < ref_best_rd) {
       mbmi->segment_id = old_segment;
