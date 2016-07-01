@@ -152,8 +152,7 @@ double av1_rdo_aq_dist_scale(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
   // 0.176782*pow(var, 0.173283);
   scale = 5.65669*pow(var, -0.173283);
 
-  //printf("scale: %f %u\n", scale, var);
-  //printf("var: %u scale: %f ", var, scale);
+  //printf("var: %u scale: %f\n", var, scale);
 
   return scale;
 }

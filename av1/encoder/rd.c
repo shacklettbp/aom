@@ -230,8 +230,6 @@ void av1_initialize_me_consts(AV1_COMP *cpi, MACROBLOCK *x, int qindex) {
 void av1_set_block_thresholds(const AV1_COMMON *cm, RD_OPT *rd, double thresh_scale) {
   int i, bsize, segment_id;
 
-  aom_clear_system_state();
-
   for (segment_id = 0; segment_id < MAX_SEGMENTS; ++segment_id) {
     const int qindex =
         clamp(av1_get_qindex(&cm->seg, segment_id, cm->base_qindex) +

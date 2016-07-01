@@ -791,9 +791,11 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
   *distortion = INT64_MAX;
   *rate = INT_MAX;
 
-  if (cpi->oxcf.aq_mode == RDO_AQ && !xd->lossless[mbmi->segment_id]) {
-    int old_segment = mbmi->segment_id;
+  if ( cpi->oxcf.aq_mode == RDO_AQ && !xd->lossless[mbmi->segment_id]) {
     int cur_segment, seg_rate;
+    int old_segment = mbmi->segment_id;
+    int outer_rdmult = x->rdmult;
+    int outer_rd_dist_scale = x->rd_dist_scale;
     int best_segment = -1;
     int64_t best_rd = INT64_MAX;
 
@@ -803,9 +805,14 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
 
       mbmi->segment_id = cur_segment;
       av1_init_plane_quantizers(cpi, x);
+      x->rdmult = av1_calc_new_rdmult(cpi, mbmi->segment_id);
+      x->rd_dist_scale = cpi->rd.RD_DIST_SCALE;
 
       // Encode the block
       choose_tx_size(cpi, x, &tmp_rate, &tmp_distortion, &tmp_skip, &tmp_psse, bs, ref_best_rd);
+
+      x->rdmult = outer_rdmult;
+      x->rd_dist_scale = outer_rd_dist_scale;
 
       if (tmp_rate == INT_MAX)
         continue;
@@ -814,7 +821,7 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
 
       tmp_rate += seg_rate;
       rd = RDCOST(x->rdmult, x->rd_dist_scale, tmp_rate, tmp_distortion);
-      //printf("%d %d %d %d %d\n", rd, seg_rate, tmp_rate, tmp_distortion, x->rd_dist_scale);
+      //printf("%d: %d %ld %d %d %ld\n", cur_segment, tmp_rate - seg_rate, tmp_distortion, x->rd_dist_scale, x->rdmult, rd);
       if (rd < best_rd) {
         best_segment = cur_segment;
         *distortion = tmp_distortion;
@@ -833,6 +840,7 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
     av1_init_plane_quantizers(cpi, x);
   } else {
     choose_tx_size(cpi, x, rate, distortion, skip, psse, bs, ref_best_rd);
+    //printf("%d %ld %d %d %ld\n", *rate, *distortion, x->rd_dist_scale, x->rdmult, RDCOST(x->rdmult, x->rd_dist_scale, *rate, *distortion));
   }
 }
 
