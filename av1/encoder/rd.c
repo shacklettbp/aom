@@ -181,7 +181,7 @@ int av1_compute_rd_mult(const AV1_COMP *cpi, int qindex) {
   return (int)rdmult;
 }
 
-static int compute_rd_thresh_factor(int qindex, aom_bit_depth_t bit_depth) {
+static int compute_rd_thresh_factor(int qindex, aom_bit_depth_t bit_depth, double thresh_scale) {
   double q;
 #if CONFIG_AOM_HIGHBITDEPTH
   switch (bit_depth) {
@@ -196,6 +196,8 @@ static int compute_rd_thresh_factor(int qindex, aom_bit_depth_t bit_depth) {
   (void)bit_depth;
   q = av1_dc_quant(qindex, 0, AOM_BITS_8) / 4.0;
 #endif  // CONFIG_AOM_HIGHBITDEPTH
+
+  q *= thresh_scale;
   // TODO(debargha): Adjust the function below.
   return AOMMAX((int)(pow(q, RD_THRESH_POW) * 5.12), 8);
 }
@@ -225,15 +227,17 @@ void av1_initialize_me_consts(AV1_COMP *cpi, MACROBLOCK *x, int qindex) {
 #endif  // CONFIG_AOM_HIGHBITDEPTH
 }
 
-static void set_block_thresholds(const AV1_COMMON *cm, RD_OPT *rd) {
+void av1_set_block_thresholds(const AV1_COMMON *cm, RD_OPT *rd, double thresh_scale) {
   int i, bsize, segment_id;
+
+  aom_clear_system_state();
 
   for (segment_id = 0; segment_id < MAX_SEGMENTS; ++segment_id) {
     const int qindex =
         clamp(av1_get_qindex(&cm->seg, segment_id, cm->base_qindex) +
                   cm->y_dc_delta_q,
               0, MAXQ);
-    const int q = compute_rd_thresh_factor(qindex, cm->bit_depth);
+    const int q = compute_rd_thresh_factor(qindex, cm->bit_depth, thresh_scale);
 
     for (bsize = 0; bsize < BLOCK_SIZES; ++bsize) {
       // Threshold here seems unnecessarily harsh but fine given actual
@@ -290,7 +294,7 @@ void av1_initialize_rd_consts(AV1_COMP *cpi) {
                           ? 0
                           : 1;
 
-  set_block_thresholds(cm, rd);
+  av1_set_block_thresholds(cm, rd, 1.0);
 
   fill_token_costs(x->token_costs, cm->fc->coef_probs);
 

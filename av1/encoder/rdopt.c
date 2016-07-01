@@ -791,7 +791,7 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
   *distortion = INT64_MAX;
   *rate = INT_MAX;
 
-  if (cpi->oxcf.aq_mode == RDO_AQ) {
+  if (cpi->oxcf.aq_mode == RDO_AQ && !xd->lossless[mbmi->segment_id]) {
     int old_segment = mbmi->segment_id;
     int cur_segment, seg_rate;
     int best_segment = -1;

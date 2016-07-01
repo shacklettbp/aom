@@ -1122,9 +1122,11 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
     if (cyclic_refresh_segment_id_boosted(
             get_segment_id(cm, map, bsize, mi_row, mi_col)))
       x->rdmult = av1_cyclic_refresh_get_rdmult(cpi->cyclic_refresh);
-  } else if (aq_mode == RDO_AQ) {
+  } else if (aq_mode == RDO_AQ && !xd->lossless[mbmi->segment_id]) {
     double dist_scale = av1_rdo_aq_dist_scale(cpi, x, bsize);
+    x->dist_scale = dist_scale;
     x->rd_dist_scale = round((double)x->rd_dist_scale * dist_scale);
+    av1_set_block_thresholds(cm, &cpi->rd, 1.0/dist_scale);
   } else if (aq_mode) {
     av1_init_plane_quantizers(cpi, x);
     x->rdmult = av1_calc_new_rdmult(cpi, mbmi->segment_id);
@@ -1157,6 +1159,9 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
     av1_caq_select_segment(cpi, x, bsize, mi_row, mi_col, rd_cost->rate);
   }
 
+  if (aq_mode == RDO_AQ) {
+    av1_set_block_thresholds(cm, &cpi->rd, 1.0);
+  }
   x->rdmult = orig_rdmult;
   x->rd_dist_scale = orig_rd_dist_scale;
 

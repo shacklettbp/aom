@@ -129,6 +129,8 @@ struct macroblock;
 
 int av1_compute_rd_mult(const struct AV1_COMP *cpi, int qindex);
 
+void av1_set_block_thresholds(const AV1_COMMON *cm, RD_OPT *rd, double thresh_scale);
+
 void av1_initialize_rd_consts(struct AV1_COMP *cpi);
 
 void av1_initialize_me_consts(struct AV1_COMP *cpi, MACROBLOCK *x, int qindex);

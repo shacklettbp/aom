@@ -79,6 +79,8 @@ struct macroblock {
   // The equivalend SAD error of one (whole) bit at the current quantizer
   // for sub-8x8 blocks.
   int sadperbit4;
+
+  double dist_scale;
   int rd_dist_scale;
   int rdmult;
   int *m_search_count_ptr;
