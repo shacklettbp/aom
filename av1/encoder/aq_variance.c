@@ -130,8 +130,8 @@ unsigned int av1_vaq_segment_id(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
   //} else {
   //  ideal_ratio = 0.176782*pow(var, 0.173283);
   //}
-  //ideal_ratio = 0.176782*pow(var, 0.173283);
-  ideal_ratio = 0.434597*pow(var, 0.0833333);
+  ideal_ratio = 0.176782*pow(var, 0.173283);
+  //ideal_ratio = 0.434597*pow(var, 0.0833333);
 
   min_delta = INFINITY;
   for (i = 0; i < MAX_SEGMENTS; i++) {

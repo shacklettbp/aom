@@ -1105,15 +1105,14 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
   orig_rd_dist_scale = x->rd_dist_scale;
 
   if (aq_mode == VARIANCE_AQ) {
-    mbmi->segment_id = av1_vaq_segment_id(cpi, x, bsize);
-    //if (cm->frame_type == KEY_FRAME || cpi->refresh_alt_ref_frame ||
-    //    (cpi->refresh_golden_frame && !cpi->rc.is_src_frame_alt_ref)) {
-    //  mbmi->segment_id = av1_vaq_segment_id(cpi, x, bsize);
-    //} else {
-    //  const uint8_t *const map =
-    //      cm->seg.update_map ? cpi->segmentation_map : cm->last_frame_seg_map;
-    //  mbmi->segment_id = get_segment_id(cm, map, bsize, mi_row, mi_col);
-    //}
+    if (cm->frame_type == KEY_FRAME || cpi->refresh_alt_ref_frame ||
+        (cpi->refresh_golden_frame && !cpi->rc.is_src_frame_alt_ref)) {
+      mbmi->segment_id = av1_vaq_segment_id(cpi, x, bsize);
+    } else {
+      const uint8_t *const map =
+          cm->seg.update_map ? cpi->segmentation_map : cm->last_frame_seg_map;
+      mbmi->segment_id = get_segment_id(cm, map, bsize, mi_row, mi_col);
+    }
   }
 
   if (aq_mode == CYCLIC_REFRESH_AQ) {
@@ -1124,7 +1123,8 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
             get_segment_id(cm, map, bsize, mi_row, mi_col)))
       x->rdmult = av1_cyclic_refresh_get_rdmult(cpi->cyclic_refresh);
   } else if (aq_mode == RDO_AQ) {
-    x->rd_dist_scale = av1_rdo_aq_dist_scale(cpi, x, bsize);
+    double dist_scale = av1_rdo_aq_dist_scale(cpi, x, bsize);
+    x->rd_dist_scale = round((double)x->rd_dist_scale * dist_scale);
   } else if (aq_mode) {
     av1_init_plane_quantizers(cpi, x);
     x->rdmult = av1_calc_new_rdmult(cpi, mbmi->segment_id);

@@ -144,19 +144,18 @@ static unsigned total_variance(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
   return total_var;
 }
 
-int av1_rdo_aq_dist_scale(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
+double av1_rdo_aq_dist_scale(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
   unsigned int var = total_variance(cpi, x, bs);
   double scale;
   aom_clear_system_state();
 
-  scale = 0.176782*pow(var, 0.173283);
-  //scale = 5.65669*pow(var, -0.173283);
+  // 0.176782*pow(var, 0.173283);
+  scale = 5.65669*pow(var, -0.173283);
 
   //printf("scale: %f %u\n", scale, var);
   //printf("var: %u scale: %f ", var, scale);
 
-  //return x->rd_dist_scale;
-  return round((double)x->rd_dist_scale * scale);
+  return scale;
 }
 
 #if 0
