@@ -311,7 +311,11 @@
           </md-tab>
           <md-tab label="Help">
             <md-content class="md-padding">
-              <h3 class="md-title">AOM Bitstream Analyzer</h3>
+              <h3 class="md-title"><a href="https://github.com/mbebenita/aomanalyzer">AOM Bitstream Analyzer</a></h3>
+              <section layout="row" layout-sm="column" layout-align="center center" layout-wrap>
+                <md-button class="md-raised" ng-click="vm.fileIssue('bug')">I found a bug!</md-button>
+                <md-button class="md-raised" ng-click="vm.fileIssue('enhancement')">I need a feature!</md-button>
+              </section>
               <p class="md-body-1">
                 This tool allows you to explore <a href="http://aomedia.org/">AV1</a> bitstreams.
                 The analyzer uses the AV1 decoder (compiled to JavaScript using Emscripten) to extract information from the bitstream and then visualizes it in a variety of ways.

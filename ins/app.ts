@@ -1012,7 +1012,7 @@ class AppCtrl {
     });
   }
 
-  updateSharingLink() {
+  createSharingLink() {
     let url = location.protocol + '//' + location.host + location.pathname;
     let args = {
       frameNumber: this.frameNumber
@@ -1029,7 +1029,15 @@ class AppCtrl {
       argList.push(arg + "=" + encodeURIComponent(args[arg]));
     }
     let argListString = argList.join("&");
-    this.sharingLink = url + "?" + argListString;
+    return url + "?" + argListString;
+  }
+
+  updateSharingLink() {
+    this.sharingLink = this.createSharingLink();
+  }
+
+  fileIssue(label: string = "") {
+    window.open("https://github.com/mbebenita/aomanalyzer/issues/new?labels=" + label + "&body=" + encodeURIComponent(this.createSharingLink()));
   }
 
   uiResetLayers() {
