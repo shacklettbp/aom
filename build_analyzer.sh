@@ -1,8 +1,9 @@
 echo Building Analyzer
-if [ ! -d "asm" ]; then
+if [ ! -f "asm/aom_config.h" ]; then
   echo Configuring Analyzer
   mkdir asm
   cd asm && emconfigure ../configure --disable-multithread --disable-runtime-cpu-detect --target=generic-gnu
+  cd ..
 fi
 
 cd asm
