@@ -842,6 +842,7 @@ static void super_block_yrd(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
 
     av1_init_plane_quantizers(cpi, x);
     av1_set_block_thresholds(&cpi->common, &cpi->rd, 1.0/x->rd_dist_scale);
+  } else if (cpi->oxcf.aq_mode == RDO_AQ && !xd->lossless[mbmi->segment_id]) {
   } else {
     choose_tx_size(cpi, x, rate, distortion, skip, psse, bs, ref_best_rd);
     //printf("%d %ld %d %d %ld\n", *rate, *distortion, x->rd_dist_scale, x->rdmult, RDCOST(x->rdmult, x->rd_dist_scale, *rate, *distortion));
@@ -926,6 +927,7 @@ static int64_t rd_pick_intra4x4block(AV1_COMP *cpi, MACROBLOCK *x, int row,
                                   dst_stride, col + idx, row + idy, 0);
           aom_highbd_subtract_block(4, 4, src_diff, 8, src, src_stride, dst,
                                     dst_stride, xd->bd);
+          // FIXME Need to segment switch here
           if (xd->lossless[xd->mi[0]->mbmi.segment_id]) {
             TX_TYPE tx_type = get_tx_type(PLANE_TYPE_Y, xd, block);
             const scan_order *so = get_scan(TX_4X4, tx_type);
