@@ -1134,6 +1134,8 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
 
   int best_segment = -1;
   int old_segment = mbmi->segment_id;
+
+  RD_COST tmp_rd_cost;
   for (i = 0; i < MAX_SEGMENTS; i++) {
     mbmi->segment_id = i;
     av1_init_plane_quantizers(cpi, x);
@@ -1142,23 +1144,24 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
     // Find best coding mode & reconstruct the MB so it is available
     // as a predictor for MBs that follow in the SB
     if (frame_is_intra_only(cm)) {
-      av1_rd_pick_intra_mode_sb(cpi, x, rd_cost, bsize, ctx, best_rd);
+      av1_rd_pick_intra_mode_sb(cpi, x, &tmp_rd_cost, bsize, ctx, best_rd);
     } else {
       if (bsize >= BLOCK_8X8) {
         if (segfeature_active(&cm->seg, mbmi->segment_id, SEG_LVL_SKIP))
-          av1_rd_pick_inter_mode_sb_seg_skip(cpi, tile_data, x, rd_cost, bsize,
+          av1_rd_pick_inter_mode_sb_seg_skip(cpi, tile_data, x, &tmp_rd_cost, bsize,
                                              ctx, best_rd);
         else
-          av1_rd_pick_inter_mode_sb(cpi, tile_data, x, mi_row, mi_col, rd_cost,
+          av1_rd_pick_inter_mode_sb(cpi, tile_data, x, mi_row, mi_col, &tmp_rd_cost,
                                     bsize, ctx, best_rd);
       } else {
-        av1_rd_pick_inter_mode_sub8x8(cpi, tile_data, x, mi_row, mi_col, rd_cost,
+        av1_rd_pick_inter_mode_sub8x8(cpi, tile_data, x, mi_row, mi_col, &tmp_rd_cost,
                                       bsize, ctx, best_rd);
       }
     }
 
     if (rd_cost->rdcost < best_rd) {
       best_rd = rd_cost->rdcost;
+      *rd_cost = tmp_rd_cost;
       best_segment = i;
     }
   }
