@@ -1132,23 +1132,42 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
     x->rdmult = av1_calc_new_rdmult(cpi, mbmi->segment_id);
   }
 
-  // Find best coding mode & reconstruct the MB so it is available
-  // as a predictor for MBs that follow in the SB
-  if (frame_is_intra_only(cm)) {
-    av1_rd_pick_intra_mode_sb(cpi, x, rd_cost, bsize, ctx, best_rd);
-  } else {
-    if (bsize >= BLOCK_8X8) {
-      if (segfeature_active(&cm->seg, mbmi->segment_id, SEG_LVL_SKIP))
-        av1_rd_pick_inter_mode_sb_seg_skip(cpi, tile_data, x, rd_cost, bsize,
-                                           ctx, best_rd);
-      else
-        av1_rd_pick_inter_mode_sb(cpi, tile_data, x, mi_row, mi_col, rd_cost,
-                                  bsize, ctx, best_rd);
+  int best_segment = -1;
+  int old_segment = mbmi->segment_id;
+  for (i = 0; i < MAX_SEGMENTS; i++) {
+    mbmi->segment_id = i;
+    av1_init_plane_quantizers(cpi, x);
+    x->rdmult = av1_calc_new_rdmult(cpi, mbmi->segment_id);
+
+    // Find best coding mode & reconstruct the MB so it is available
+    // as a predictor for MBs that follow in the SB
+    if (frame_is_intra_only(cm)) {
+      av1_rd_pick_intra_mode_sb(cpi, x, rd_cost, bsize, ctx, best_rd);
     } else {
-      av1_rd_pick_inter_mode_sub8x8(cpi, tile_data, x, mi_row, mi_col, rd_cost,
+      if (bsize >= BLOCK_8X8) {
+        if (segfeature_active(&cm->seg, mbmi->segment_id, SEG_LVL_SKIP))
+          av1_rd_pick_inter_mode_sb_seg_skip(cpi, tile_data, x, rd_cost, bsize,
+                                             ctx, best_rd);
+        else
+          av1_rd_pick_inter_mode_sb(cpi, tile_data, x, mi_row, mi_col, rd_cost,
                                     bsize, ctx, best_rd);
+      } else {
+        av1_rd_pick_inter_mode_sub8x8(cpi, tile_data, x, mi_row, mi_col, rd_cost,
+                                      bsize, ctx, best_rd);
+      }
+    }
+
+    if (rd_cost->rdcost < best_rd) {
+      best_rd = rd_cost->rdcost;
+      best_segment = i;
     }
   }
+  if (best_segment != -1) {
+    mbmi->segment_id = best_segment;
+  } else {
+    mbmi->segment_id = old_segment;
+  }
+  av1_init_plane_quantizers(cpi, x);
   //printf("best %d, pos: %d %d, bs %d\n", mbmi->segment_id, mi_row, mi_col, bsize);
 
   // Examine the resulting rate and for AQ mode 2 make a segment choice.
