@@ -1139,7 +1139,6 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
   for (i = 0; i < MAX_SEGMENTS; i++) {
     mbmi->segment_id = i;
     av1_init_plane_quantizers(cpi, x);
-    x->rdmult = av1_calc_new_rdmult(cpi, mbmi->segment_id);
 
     // Find best coding mode & reconstruct the MB so it is available
     // as a predictor for MBs that follow in the SB
