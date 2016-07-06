@@ -1023,6 +1023,8 @@ static int64_t rd_pick_intra4x4block(AV1_COMP *cpi, MACROBLOCK *x, int row,
                                 dst_stride, col + idx, row + idy, 0);
         aom_subtract_block(4, 4, src_diff, 8, src, src_stride, dst, dst_stride);
 
+        // FIXME Need to segment switch here, but these are 4x4 blocks 
+
         if (xd->lossless[xd->mi[0]->mbmi.segment_id]) {
           TX_TYPE tx_type = get_tx_type(PLANE_TYPE_Y, xd, block);
           const scan_order *so = get_scan(TX_4X4, tx_type);
@@ -3228,6 +3230,7 @@ static int64_t handle_inter_mode(
   mbmi->interp_filter = assign_filter == SWITCHABLE ? EIGHTTAP : assign_filter;
   rs = av1_get_switchable_rate(cpi, xd);
   av1_build_inter_predictors_sb(xd, mi_row, mi_col, bsize);
+  // FIXME seg here?
   model_rd_for_sb(cpi, bsize, x, xd, &tmp_rate, &tmp_dist, &skip_txfm_sb,
                   &skip_sse_sb);
   rd = RDCOST(x->rdmult, x->rd_dist_scale, rs + tmp_rate, tmp_dist);
@@ -3248,6 +3251,7 @@ static int64_t handle_inter_mode(
         mbmi->interp_filter = i;
         tmp_rs = av1_get_switchable_rate(cpi, xd);
         av1_build_inter_predictors_sb(xd, mi_row, mi_col, bsize);
+        // FIXME seg here?
         model_rd_for_sb(cpi, bsize, x, xd, &tmp_rate, &tmp_dist, &tmp_skip_sb,
                         &tmp_skip_sse);
         tmp_rd = RDCOST(x->rdmult, x->rd_dist_scale, tmp_rs + tmp_rate, tmp_dist);
@@ -3327,6 +3331,7 @@ static int64_t handle_inter_mode(
       av1_build_obmc_inter_prediction(cm, xd, mi_row, mi_col, 0, NULL, NULL,
                                       above_pred_buf, above_pred_stride,
                                       left_pred_buf, left_pred_stride);
+      // FIXME Seg select??
       model_rd_for_sb(cpi, bsize, x, xd, &tmp_rate, &tmp_dist, &skip_txfm_sb,
                       &skip_sse_sb);
     }
@@ -3343,6 +3348,8 @@ static int64_t handle_inter_mode(
       int skippable_y, skippable_uv;
       int64_t sseuv = INT64_MAX;
       int64_t rdcosty = INT64_MAX;
+
+      // FIXME definitely seg select
 
       // Y cost and distortion
       av1_subtract_plane(x, bsize, 0);
@@ -4007,9 +4014,11 @@ void av1_rd_pick_inter_mode_sb(AV1_COMP *cpi, TileDataEnc *tile_data,
     }
 
     if (ref_frame == INTRA_FRAME) {
+      // Intra coded
       TX_SIZE uv_tx;
       struct macroblockd_plane *const pd = &xd->plane[1];
       memset(x->skip_txfm, 0, sizeof(x->skip_txfm));
+      // FIXME seg select??
 #if CONFIG_EXT_INTRA
       if (is_directional_mode(mbmi->mode)) {
         int rate_dummy;
