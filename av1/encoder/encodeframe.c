@@ -1105,14 +1105,11 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
   orig_rd_dist_scale = x->rd_dist_scale;
 
   if (aq_mode == VARIANCE_AQ) {
-    if (cm->frame_type == KEY_FRAME || cpi->refresh_alt_ref_frame ||
-        (cpi->refresh_golden_frame && !cpi->rc.is_src_frame_alt_ref)) {
-      mbmi->segment_id = av1_vaq_segment_id(cpi, x, bsize);
-    } else {
-      const uint8_t *const map =
-          cm->seg.update_map ? cpi->segmentation_map : cm->last_frame_seg_map;
-      mbmi->segment_id = get_segment_id(cm, map, bsize, mi_row, mi_col);
-    }
+    double dist_scale = av1_rdo_aq_dist_scale(cpi, x, bsize);
+    mbmi->segment_id = av1_vaq_segment_id(cpi, x, bsize);
+    x->dist_scale = dist_scale;
+    x->rd_dist_scale = round((double)x->rd_dist_scale * dist_scale);
+    av1_set_block_thresholds(cm, &cpi->rd, 1.0/dist_scale);
   }
 
   if (aq_mode == CYCLIC_REFRESH_AQ) {
@@ -1123,54 +1120,32 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
             get_segment_id(cm, map, bsize, mi_row, mi_col)))
       x->rdmult = av1_cyclic_refresh_get_rdmult(cpi->cyclic_refresh);
   } else if (aq_mode == RDO_AQ && !xd->lossless[mbmi->segment_id]) {
-    //double dist_scale = av1_rdo_aq_dist_scale(cpi, x, bsize);
-    //x->dist_scale = dist_scale;
-    //x->rd_dist_scale = round((double)x->rd_dist_scale * dist_scale);
-    //av1_set_block_thresholds(cm, &cpi->rd, 1.0/dist_scale);
+    double dist_scale = av1_rdo_aq_dist_scale(cpi, x, bsize);
+    x->dist_scale = dist_scale;
+    x->rd_dist_scale = round((double)x->rd_dist_scale * dist_scale);
+    av1_set_block_thresholds(cm, &cpi->rd, 1.0/dist_scale);
   } else if (aq_mode) {
     av1_init_plane_quantizers(cpi, x);
-    x->rdmult = av1_calc_new_rdmult(cpi, mbmi->segment_id);
+    //x->rdmult = av1_calc_new_rdmult(cpi, mbmi->segment_id);
   }
 
-  int best_segment = -1;
-  int old_segment = mbmi->segment_id;
-
-  RD_COST tmp_rd_cost;
-  for (i = 0; i < MAX_SEGMENTS; i++) {
-    mbmi->segment_id = i;
-    av1_init_plane_quantizers(cpi, x);
-    x->rdmult = av1_calc_new_rdmult(cpi, mbmi->segment_id);
-
-    // Find best coding mode & reconstruct the MB so it is available
-    // as a predictor for MBs that follow in the SB
-    if (frame_is_intra_only(cm)) {
-      av1_rd_pick_intra_mode_sb(cpi, x, &tmp_rd_cost, bsize, ctx, best_rd);
-    } else {
-      if (bsize >= BLOCK_8X8) {
-        if (segfeature_active(&cm->seg, mbmi->segment_id, SEG_LVL_SKIP))
-          av1_rd_pick_inter_mode_sb_seg_skip(cpi, tile_data, x, &tmp_rd_cost, bsize,
-                                             ctx, best_rd);
-        else
-          av1_rd_pick_inter_mode_sb(cpi, tile_data, x, mi_row, mi_col, &tmp_rd_cost,
-                                    bsize, ctx, best_rd);
-      } else {
-        av1_rd_pick_inter_mode_sub8x8(cpi, tile_data, x, mi_row, mi_col, &tmp_rd_cost,
-                                      bsize, ctx, best_rd);
-      }
-    }
-
-    if (rd_cost->rdcost < best_rd) {
-      best_rd = rd_cost->rdcost;
-      *rd_cost = tmp_rd_cost;
-      best_segment = i;
-    }
-  }
-  if (best_segment != -1) {
-    mbmi->segment_id = best_segment;
+  // Find best coding mode & reconstruct the MB so it is available
+  // as a predictor for MBs that follow in the SB
+  if (frame_is_intra_only(cm)) {
+    av1_rd_pick_intra_mode_sb(cpi, x, rd_cost, bsize, ctx, best_rd);
   } else {
-    mbmi->segment_id = old_segment;
+    if (bsize >= BLOCK_8X8) {
+      if (segfeature_active(&cm->seg, mbmi->segment_id, SEG_LVL_SKIP))
+        av1_rd_pick_inter_mode_sb_seg_skip(cpi, tile_data, x, rd_cost, bsize,
+                                           ctx, best_rd);
+      else
+        av1_rd_pick_inter_mode_sb(cpi, tile_data, x, mi_row, mi_col, rd_cost,
+                                  bsize, ctx, best_rd);
+    } else {
+      av1_rd_pick_inter_mode_sub8x8(cpi, tile_data, x, mi_row, mi_col, rd_cost,
+                                    bsize, ctx, best_rd);
+    }
   }
-  av1_init_plane_quantizers(cpi, x);
   //printf("best %d, pos: %d %d, bs %d\n", mbmi->segment_id, mi_row, mi_col, bsize);
 
   // Examine the resulting rate and for AQ mode 2 make a segment choice.

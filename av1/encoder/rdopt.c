@@ -1459,6 +1459,7 @@ static int64_t rd_pick_intra_sby_mode(AV1_COMP *cpi, MACROBLOCK *x, int *rate,
   for (mode = DC_PRED; mode <= TM_PRED; mode++) {
     mbmi->mode = mode;
 
+
 #if CONFIG_EXT_INTRA
     if (is_directional_mode(mbmi->mode)) {
       if (directional_mode_skip_mask[mbmi->mode]) continue;
