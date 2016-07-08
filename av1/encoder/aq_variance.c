@@ -143,7 +143,7 @@ unsigned int av1_vaq_segment_id(AV1_COMP *cpi, MACROBLOCK *x, BLOCK_SIZE bs) {
     }
   }
 
-  printf("var: %u, ratio: %f, segment: %u\n", var, ideal_ratio, best_segment);
+  //printf("var: %u, ratio: %f, segment: %u\n", var, ideal_ratio, best_segment);
 
   return best_segment;
 }
