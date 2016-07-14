@@ -93,7 +93,7 @@ static const uint16_t AV1_HIGH_VAR_OFFS_12[64] = {
 };
 #endif  // CONFIG_AOM_HIGHBITDEPTH
 
-void save_rd_results(RDContext *const rdctx, const ThreadData *const td, BLOCK_SIZE bsize) {
+void save_rd_results(RDContext *const rdctx, const ThreadData *const td, TOKENEXTRA *const tp_orig, TOKENEXTRA **tp_new, BLOCK_SIZE bsize) {
   int i, r, x_idx, y;
   const MACROBLOCK *const x = &td->mb;
   const MACROBLOCKD *const xd = &x->e_mbd;
@@ -130,9 +130,14 @@ void save_rd_results(RDContext *const rdctx, const ThreadData *const td, BLOCK_S
   }
   rdctx->best_rd_counts = *rd_counts;
   rdctx->best_frame_counts = *frame_counts;
+
+  // Save tokens
+  rdctx->num_tokens = *tp_new - tp_orig;
+  assert(rdctx->num_tokens * sizeof(TOKENEXTRA) <= sizeof(rdctx->best_tokens));
+  memcpy(rdctx->best_tokens, tp_orig, rdctx->num_tokens * sizeof(rdctx->best_tokens[0]));
 }
 
-void restore_rd_results(const RDContext *const rdctx, ThreadData *const td, BLOCK_SIZE bsize) {
+void restore_rd_results(const RDContext *const rdctx, ThreadData *const td, TOKENEXTRA ** tp, BLOCK_SIZE bsize) {
   int i, r, x_idx, y;
   MACROBLOCK *const x = &td->mb;
   MACROBLOCKD *const xd = &x->e_mbd;
@@ -169,6 +174,9 @@ void restore_rd_results(const RDContext *const rdctx, ThreadData *const td, BLOC
 
   *rd_counts = rdctx->best_rd_counts;
   *frame_counts = rdctx->best_frame_counts;
+
+  memcpy(*tp, rdctx->best_tokens, rdctx->num_tokens * sizeof(**tp));
+  *tp += rdctx->num_tokens;
 }
 
 unsigned int av1_get_sby_perpixel_variance(const AV1_COMP *cpi,
@@ -1258,7 +1266,7 @@ static void update_stats(const AV1_COMMON *const cm, ThreadData *td) {
   }
 }
 
-static void restore_context(MACROBLOCK *const x, int mi_row, int mi_col,
+static void restore_context(MACROBLOCK *const x, TOKENEXTRA *tp_orig, TOKENEXTRA **tp, int mi_row, int mi_col,
                             ENTROPY_CONTEXT a[16 * MAX_MB_PLANE],
                             ENTROPY_CONTEXT l[16 * MAX_MB_PLANE],
                             PARTITION_CONTEXT sa[8], PARTITION_CONTEXT sl[8],
@@ -1284,6 +1292,10 @@ static void restore_context(MACROBLOCK *const x, int mi_row, int mi_col,
          sizeof(*xd->above_seg_context) * mi_width);
   memcpy(xd->left_seg_context + (mi_row & MI_MASK), sl,
          sizeof(xd->left_seg_context[0]) * mi_height);
+
+
+  // Reset the position of the token pointer
+  *tp = tp_orig;
 }
 
 static void save_context(MACROBLOCK *const x, int mi_row, int mi_col,
@@ -1397,6 +1409,7 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
   MACROBLOCK *const x = &td->mb;
   MACROBLOCKD *const xd = &x->e_mbd;
   RDContext *const rdctx = &tile_data->rd_ctx[depth];
+  TOKENEXTRA *const tp_orig = *tp;
   const int mis = cm->mi_stride;
   const int bsl = b_width_log2_lookup[bsize];
   const int mi_step = num_4x4_blocks_wide_lookup[bsize] / 2;
@@ -1426,7 +1439,7 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
 
   save_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
 
-  save_rd_results(rdctx, td, bsize);
+  save_rd_results(rdctx, td, tp_orig, tp, bsize);
 
   if (bsize == BLOCK_16X16 && cpi->oxcf.aq_mode) {
     set_offsets(cpi, tile_info, x, mi_row, mi_col, bsize);
@@ -1465,11 +1478,11 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
 
 
         chosen_rdc = current_rdc;
-        save_rd_results(rdctx, td, bsize);
+        save_rd_results(rdctx, td, tp_orig, tp, bsize);
       }
 
 
-      restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+      restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
       mi_8x8[0]->mbmi.sb_type = bs_type;
     }
   }
@@ -1555,7 +1568,7 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
         RDCOST(x->rdmult, x->rddiv, current_rdc.rate, current_rdc.dist);
 
     if (current_rdc.rdcost < chosen_rdc.rdcost) { 
-      save_rd_results(rdctx, td, bsize);
+      save_rd_results(rdctx, td, tp_orig, tp, bsize);
 
       chosen_rdc = current_rdc;
     }
@@ -1571,7 +1584,7 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
     BLOCK_SIZE split_subsize = get_subsize(bsize, PARTITION_SPLIT);
     current_rdc.rate = 0;
     current_rdc.dist = 0;
-    restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+    restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
 
     // Split partition.
     for (i = 0; i < 4; i++) {
@@ -1588,7 +1601,7 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
       rd_block_pick_mode_encode(cpi, td, tile_data, x, tp, mi_row + y_idx, mi_col + x_idx,
                        &tmp_rdc, split_subsize, INT64_MAX);
 
-      restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+      restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
 
       if (tmp_rdc.rate == INT_MAX || tmp_rdc.dist == INT64_MAX) {
         av1_rd_cost_reset(&current_rdc);
@@ -1612,17 +1625,17 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
 
   if (current_rdc.rdcost < chosen_rdc.rdcost) {
     chosen_rdc = current_rdc;
-    save_rd_results(rdctx, td, bsize);
+    save_rd_results(rdctx, td, tp_orig, tp, bsize);
   }
 
-  restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+  restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
 
   // We must have chosen a partitioning and encoding or we'll fail later on.
   // No other opportunities for success.
   if (bsize == BLOCK_64X64)
     assert(chosen_rdc.rate < INT_MAX && chosen_rdc.dist < INT64_MAX);
 
-  restore_rd_results(rdctx, td, bsize);
+  restore_rd_results(rdctx, td, tp, bsize);
 
   *rate = chosen_rdc.rate;
   *dist = chosen_rdc.dist;
@@ -1873,11 +1886,11 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   TileInfo *const tile_info = &tile_data->tile_info;
   RDContext *const rdctx = &tile_data->rd_ctx[depth];
   MACROBLOCK *const x = &td->mb;
+  TOKENEXTRA *const tp_orig = *tp;
   const MACROBLOCKD *const xd = &x->e_mbd;
   const int mi_step = num_8x8_blocks_wide_lookup[bsize] / 2;
   ENTROPY_CONTEXT l[16 * MAX_MB_PLANE], a[16 * MAX_MB_PLANE];
   PARTITION_CONTEXT sl[8], sa[8];
-  TOKENEXTRA *const tp_restore = *tp;
   BLOCK_SIZE subsize;
   RD_COST this_rdc, sum_rdc, best_rdc;
   int_mv predmv_backup[2] = { 0 };
@@ -1917,7 +1930,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
 
   set_offsets(cpi, tile_info, x, mi_row, mi_col, bsize);
 
-  save_rd_results(rdctx, td, bsize);
+  save_rd_results(rdctx, td, tp_orig, tp, bsize);
 
   // Hack so start_interp_filter is set to SWITCHABLE first
   rdctx->best_mi[0].mbmi.interp_filter = SWITCHABLE;
@@ -2052,8 +2065,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
           do_rectangular_split = 0;
         }
 
-        save_rd_results(rdctx, td, bsize);
-        tp_restore = *tp;
+        save_rd_results(rdctx, td, tp_orig, tp, bsize);
 
 #if CONFIG_FP_MB_STATS
         // Check if every 16x16 first pass block statistics has zero
@@ -2102,7 +2114,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
 #endif
       }
     }
-    restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+    restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
   }
 
   // store estimated motion vector
@@ -2157,15 +2169,14 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
       if (sum_rdc.rdcost < best_rdc.rdcost) {
         best_rdc = sum_rdc;
 
-        save_rd_results(rdctx, td, bsize);
-        tp_restore = *tp;
+        save_rd_results(rdctx, td, tp_orig, tp, bsize);
       }
     } else if (cpi->sf.less_rectangular_check) {
       // skip rectangular partition test when larger block size
       // gives better rd cost
       do_rectangular_split &= !partition_none_allowed;
     }
-    restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+    restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
   }
 
   // PARTITION_HORZ
@@ -2206,11 +2217,10 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
       sum_rdc.rdcost = RDCOST(x->rdmult, x->rddiv, sum_rdc.rate, sum_rdc.dist);
       if (sum_rdc.rdcost < best_rdc.rdcost) {
         best_rdc = sum_rdc;
-        save_rd_results(rdctx, td, bsize);
-        tp_restore = *tp;
+        save_rd_results(rdctx, td, tp_orig, tp, bsize);
       }
     }
-    restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+    restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
   }
   // PARTITION_VERT
   if (partition_vert_allowed &&
@@ -2248,10 +2258,10 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
       sum_rdc.rdcost = RDCOST(x->rdmult, x->rddiv, sum_rdc.rate, sum_rdc.dist);
       if (sum_rdc.rdcost < best_rdc.rdcost) {
         best_rdc = sum_rdc;
-        save_rd_results(rdctx, td, bsize);
+        save_rd_results(rdctx, td, tp_orig, tp, bsize);
       }
     }
-    restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+    restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
   }
 
   // TODO(jbb): This code added so that we avoid static analysis
@@ -2262,16 +2272,13 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   *rd_cost = best_rdc;
 
   if (best_rdc.rate < INT_MAX && best_rdc.dist < INT64_MAX) {
-    restore_rd_results(rdctx, td, bsize);
+    restore_rd_results(rdctx, td, tp, bsize);
   }
 
   if (bsize == BLOCK_64X64) {
-    // FIXME
-    //assert(tp_orig < *tp || (tp_orig == *tp && xd->mi[0]->mbmi.skip));
+    assert(tp_orig < *tp || (tp_orig == *tp && xd->mi[0]->mbmi.skip));
     assert(best_rdc.rate < INT_MAX);
     assert(best_rdc.dist < INT64_MAX);
-  } else {
-    //assert(tp_orig == *tp);
   }
 }
 
