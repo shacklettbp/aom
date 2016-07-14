@@ -2524,6 +2524,15 @@ void av1_encode_tile(AV1_COMP *cpi, ThreadData *td, int tile_row,
        mi_row += MI_BLOCK_SIZE) {
     encode_rd_sb_row(cpi, td, this_tile, mi_row, &tok);
   }
+
+  // Cleanup pointers to per thread coefficient storage.
+  for (i = 0; i < MAX_MB_PLANE; ++i) {
+    aom_free(p[i].coeff);
+    aom_free(p[i].qcoeff);
+    aom_free(pd[i].dqcoeff);
+    aom_free(p[i].eobs);
+  }
+
   cpi->tok_count[tile_row][tile_col] =
       (unsigned int)(tok - cpi->tile_tok[tile_row][tile_col]);
   assert(tok - cpi->tile_tok[tile_row][tile_col] <=
