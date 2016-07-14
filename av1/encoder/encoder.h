@@ -270,7 +270,7 @@ typedef struct RD_COUNTS {
 } RD_COUNTS;
 
 typedef struct RDContext {
-  DECLARE_ALIGNED(32, uint8_t, best_buf[MAX_MB_PLANE][MAX_SB_SQUARE]);
+  uint8_t best_buf[MAX_MB_PLANE][MAX_SB_SQUARE];
 
   MODE_INFO best_mi[MAX_SB_SQUARE / 8];
   MODE_INFO *best_mi_ptrs[MAX_SB_SQUARE / 8];
@@ -284,15 +284,9 @@ typedef struct RDContext {
 // TODO(jingning) All spatially adaptive variables should go to TileDataEnc.
 typedef struct TileDataEnc {
   TileInfo tile_info;
+  RDContext rd_ctx[MAX_PARTITION_LEVELS];
   int thresh_freq_fact[BLOCK_SIZES][MAX_MODES];
   int mode_map[BLOCK_SIZES][MAX_MODES];
-
-  RDContext rd_ctx[MAX_PARTITION_LEVELS];
-
-  DECLARE_ALIGNED(32, tran_low_t, coeff_buf[MAX_MB_PLANE][MAX_SB_SQUARE]);
-  DECLARE_ALIGNED(32, tran_low_t, qcoeff_buf[MAX_MB_PLANE][MAX_SB_SQUARE]);
-  DECLARE_ALIGNED(32, tran_low_t, dqcoeff_buf[MAX_MB_PLANE][MAX_SB_SQUARE]);
-  DECLARE_ALIGNED(32, uint16_t, eobs_buf[MAX_MB_PLANE][MAX_SB_SQUARE]);
 } TileDataEnc;
 
 typedef struct ThreadData {

@@ -2510,10 +2510,14 @@ void av1_encode_tile(AV1_COMP *cpi, ThreadData *td, int tile_row,
 
   // Set up pointers to per thread coefficient storage.
   for (i = 0; i < MAX_MB_PLANE; ++i) {
-    p[i].coeff = this_tile->coeff_buf[i];
-    p[i].qcoeff = this_tile->qcoeff_buf[i];
-    pd[i].dqcoeff = this_tile->dqcoeff_buf[i];
-    p[i].eobs = this_tile->eobs_buf[i];
+    CHECK_MEM_ERROR(cm, p[i].coeff,
+                  aom_memalign(32, MAX_SB_SQUARE * sizeof(*p[i].coeff)));
+    CHECK_MEM_ERROR(cm, p[i].qcoeff,
+                    aom_memalign(32, MAX_SB_SQUARE * sizeof(*p[i].qcoeff)));
+    CHECK_MEM_ERROR(cm, pd[i].dqcoeff,
+                      aom_memalign(32, MAX_SB_SQUARE * sizeof(*pd[i].dqcoeff)));
+    CHECK_MEM_ERROR(cm, p[i].eobs,
+                    aom_memalign(32, MAX_SB_SQUARE * sizeof(*p[i].eobs)));
   }
 
   for (mi_row = tile_info->mi_row_start; mi_row < tile_info->mi_row_end;
