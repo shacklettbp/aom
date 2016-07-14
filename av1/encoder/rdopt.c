@@ -3602,7 +3602,7 @@ void av1_rd_pick_inter_mode_sb(const AV1_COMP *cpi, TileDataEnc *tile_data,
   int *mode_map = tile_data->mode_map[bsize];
   const int mode_search_skip_flags = sf->mode_search_skip_flags;
   int num_4x4_blks = 1 << (num_pels_log2_lookup[bsize] - 4);
-  uint8_t best_zcoeff[MAX_SB_SQUARE / 16];
+  uint8_t best_zcoeff[256 * MAX_SB_SQUARE / 16];
 #if CONFIG_EXT_INTRA
   int angle_stats_ready = 0;
   int8_t uv_angle_delta[TX_SIZES];
@@ -4587,7 +4587,8 @@ void av1_rd_pick_inter_mode_sub8x8(const AV1_COMP *cpi, TileDataEnc *tile_data,
   int internal_active_edge =
       av1_active_edge_sb(cpi, mi_row, mi_col) && av1_internal_image_edge(cpi);
   int num_4x4_blks = 1 << (num_pels_log2_lookup[bsize] - 4);
-  uint8_t best_zcoeff[MAX_SB_SQUARE / 16];
+  // best_zcoeff is large enough to hold all coefficients for a 64x64 block
+  uint8_t best_zcoeff[256 * MAX_SB_SQUARE / 16];
 
   memset(x->zcoeff_blk[TX_4X4], 0, 4);
   av1_zero(best_mbmode);
