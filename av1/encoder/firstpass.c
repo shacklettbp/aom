@@ -526,8 +526,8 @@ void av1_first_pass(AV1_COMP *cpi, const struct lookahead_entry *source) {
   for (i = 0; i < MAX_MB_PLANE; ++i) {
     p[i].coeff = coeff_buf[i];
     p[i].qcoeff = qcoeff_buf[i];
-    pd[i].dqcoeff = dqcoeff_pbuf[i];
-    p[i].eobs = eobs_pbuf[i];
+    pd[i].dqcoeff = dqcoeff_buf[i];
+    p[i].eobs = eobs_buf[i];
   }
 
   av1_init_mv_probs(cm);

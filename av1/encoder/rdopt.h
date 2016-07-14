@@ -15,7 +15,6 @@
 #include "av1/common/blockd.h"
 
 #include "av1/encoder/block.h"
-#include "av1/encoder/context_tree.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -28,7 +27,7 @@ struct RD_COST;
 
 void av1_rd_pick_intra_mode_sb(const struct AV1_COMP *cpi, struct macroblock *x,
                                struct RD_COST *rd_cost, BLOCK_SIZE bsize,
-                               PICK_MODE_CONTEXT *ctx, int64_t best_rd);
+                               int64_t best_rd);
 
 unsigned int av1_get_sby_perpixel_variance(const struct AV1_COMP *cpi,
                                            const struct buf_2d *ref,
@@ -43,12 +42,12 @@ void av1_rd_pick_inter_mode_sb(const struct AV1_COMP *cpi,
                                struct TileDataEnc *tile_data,
                                struct macroblock *x, int mi_row, int mi_col,
                                struct RD_COST *rd_cost, BLOCK_SIZE bsize,
-                               PICK_MODE_CONTEXT *ctx, int64_t best_rd_so_far);
+                               int64_t best_rd_so_far);
 
 void av1_rd_pick_inter_mode_sb_seg_skip(
     const struct AV1_COMP *cpi, struct TileDataEnc *tile_data,
     struct macroblock *x, struct RD_COST *rd_cost, BLOCK_SIZE bsize,
-    PICK_MODE_CONTEXT *ctx, int64_t best_rd_so_far);
+    int64_t best_rd_so_far);
 
 int av1_internal_image_edge(const struct AV1_COMP *cpi);
 int av1_active_h_edge(const struct AV1_COMP *cpi, int mi_row, int mi_step);
@@ -59,8 +58,11 @@ void av1_rd_pick_inter_mode_sub8x8(const struct AV1_COMP *cpi,
                                    struct TileDataEnc *tile_data,
                                    struct macroblock *x, int mi_row, int mi_col,
                                    struct RD_COST *rd_cost, BLOCK_SIZE bsize,
-                                   PICK_MODE_CONTEXT *ctx,
                                    int64_t best_rd_so_far);
+
+void av1_rd_encode_block(const AV1_COMP *const cpi, ThreadData *const td, MACROBLOCK *const x,
+                         TOKENEXTRA **t, int mi_row,
+                         int mi_col, BLOCK_SIZE bsize, RD_COST *rd_cost);
 
 #ifdef __cplusplus
 }  // extern "C"

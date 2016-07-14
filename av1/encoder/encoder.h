@@ -262,13 +262,21 @@ static INLINE int is_lossless_requested(const AV1EncoderConfig *cfg) {
   return cfg->best_allowed_q == 0 && cfg->worst_allowed_q == 0;
 }
 
+typedef struct RD_COUNTS {
+  av1_coeff_count coef_counts[TX_SIZES][PLANE_TYPES];
+  int64_t comp_pred_diff[REFERENCE_MODES];
+  int m_search_count;
+  int ex_search_count;
+} RD_COUNTS;
+
 typedef struct RDContext {
   DECLARE_ALIGNED(32, uint8_t, best_buf[MAX_MB_PLANE][MAX_SB_SQUARE]);
 
-  MODE_INFO best_mi;
-  MB_MODE_INFO_EXT best_mbmi_ext;
+  MODE_INFO best_mi[MAX_SB_SQUARE / 8];
+  MODE_INFO *best_mi_ptrs[MAX_SB_SQUARE / 8];
 
-  RD_COUNTS best_counts;;
+  RD_COUNTS best_rd_counts;
+  FRAME_COUNTS best_frame_counts;
 } RDContext;
 
 // TODO(jingning) All spatially adaptive variables should go to TileDataEnc.
@@ -284,13 +292,6 @@ typedef struct TileDataEnc {
   DECLARE_ALIGNED(32, tran_low_t, dqcoeff_buf[MAX_MB_PLANE][MAX_SB_SQUARE]);
   DECLARE_ALIGNED(32, uint16_t, eobs_buf[MAX_MB_PLANE][MAX_SB_SQUARE]);
 } TileDataEnc;
-
-typedef struct RD_COUNTS {
-  av1_coeff_count coef_counts[TX_SIZES][PLANE_TYPES];
-  int64_t comp_pred_diff[REFERENCE_MODES];
-  int m_search_count;
-  int ex_search_count;
-} RD_COUNTS;
 
 typedef struct ThreadData {
   MACROBLOCK mb;
