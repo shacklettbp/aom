@@ -274,6 +274,7 @@ typedef struct RDContext {
 
   MODE_INFO best_mi[MAX_SB_SQUARE / 8];
   MODE_INFO *best_mi_ptrs[MAX_SB_SQUARE / 8];
+  MB_MODE_INFO_EXT best_mbmi_ext;
 
   RD_COUNTS best_rd_counts;
   FRAME_COUNTS best_frame_counts;
