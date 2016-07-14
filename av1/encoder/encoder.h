@@ -23,7 +23,6 @@
 #include "av1/common/onyxc_int.h"
 
 #include "av1/encoder/aq_cyclicrefresh.h"
-#include "av1/encoder/context_tree.h"
 #include "av1/encoder/encodemb.h"
 #include "av1/encoder/firstpass.h"
 #include "av1/encoder/lookahead.h"
@@ -54,6 +53,10 @@ extern "C" {
 // Therefore when multi arf mode is enabled, 1 more buffer is required then
 // MAX_REF_FRAMES.
 #define MAX_UPSAMPLED_BUFS (MAX_REF_FRAMES + 1)
+
+// The number of partition contexts that need to be retained per thread:
+// 64 -> 32 -> 16 -> 8
+#define MAX_PARTITION_LEVELS (4)
 
 typedef struct {
   int nmvjointcost[MV_JOINTS];
@@ -259,11 +262,27 @@ static INLINE int is_lossless_requested(const AV1EncoderConfig *cfg) {
   return cfg->best_allowed_q == 0 && cfg->worst_allowed_q == 0;
 }
 
+typedef struct RDContext {
+  DECLARE_ALIGNED(32, uint8_t, best_buf[MAX_MB_PLANE][MAX_SB_SQUARE]);
+
+  MODE_INFO best_mi;
+  MB_MODE_INFO_EXT best_mbmi_ext;
+
+  RD_COUNTS best_counts;;
+} RDContext;
+
 // TODO(jingning) All spatially adaptive variables should go to TileDataEnc.
 typedef struct TileDataEnc {
   TileInfo tile_info;
   int thresh_freq_fact[BLOCK_SIZES][MAX_MODES];
   int mode_map[BLOCK_SIZES][MAX_MODES];
+
+  RDContext rd_ctx[MAX_PARTITION_LEVELS];
+
+  DECLARE_ALIGNED(32, tran_low_t, coeff_buf[MAX_MB_PLANE][MAX_SB_SQUARE]);
+  DECLARE_ALIGNED(32, tran_low_t, qcoeff_buf[MAX_MB_PLANE][MAX_SB_SQUARE]);
+  DECLARE_ALIGNED(32, tran_low_t, dqcoeff_buf[MAX_MB_PLANE][MAX_SB_SQUARE]);
+  DECLARE_ALIGNED(32, uint16_t, eobs_buf[MAX_MB_PLANE][MAX_SB_SQUARE]);
 } TileDataEnc;
 
 typedef struct RD_COUNTS {
@@ -277,10 +296,6 @@ typedef struct ThreadData {
   MACROBLOCK mb;
   RD_COUNTS rd_counts;
   FRAME_COUNTS *counts;
-
-  PICK_MODE_CONTEXT *leaf_tree;
-  PC_TREE *pc_tree;
-  PC_TREE *pc_root;
 } ThreadData;
 
 struct EncWorkerData;

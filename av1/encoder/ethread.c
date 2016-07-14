@@ -88,11 +88,6 @@ void av1_encode_tiles_mt(AV1_COMP *cpi) {
                         aom_memalign(32, sizeof(*thread_data->td)));
         av1_zero(*thread_data->td);
 
-        // Set up pc_tree.
-        thread_data->td->leaf_tree = NULL;
-        thread_data->td->pc_tree = NULL;
-        av1_setup_pc_tree(cm, thread_data->td);
-
         // Allocate frame counters in thread data.
         CHECK_MEM_ERROR(cm, thread_data->td->counts,
                         aom_calloc(1, sizeof(*thread_data->td->counts)));

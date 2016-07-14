@@ -32,7 +32,6 @@
 #include "av1/encoder/aq_cyclicrefresh.h"
 #include "av1/encoder/aq_variance.h"
 #include "av1/encoder/bitstream.h"
-#include "av1/encoder/context_tree.h"
 #include "av1/encoder/encodeframe.h"
 #include "av1/encoder/encodemv.h"
 #include "av1/encoder/encoder.h"
@@ -419,8 +418,6 @@ static void dealloc_compressor_data(AV1_COMP *cpi) {
   aom_free(cpi->tile_tok[0][0]);
   cpi->tile_tok[0][0] = 0;
 
-  av1_free_pc_tree(&cpi->td);
-
   if (cpi->source_diff_var != NULL) {
     aom_free(cpi->source_diff_var);
     cpi->source_diff_var = NULL;
@@ -751,8 +748,6 @@ void av1_alloc_compressor_data(AV1_COMP *cpi) {
     aom_buf_ans_alloc(&cpi->buf_ans, &cm->error, tokens);
 #endif  // CONFIG_ANS
   }
-
-  av1_setup_pc_tree(&cpi->common, &cpi->td);
 }
 
 void av1_new_framerate(AV1_COMP *cpi, double framerate) {
@@ -1842,7 +1837,6 @@ void av1_remove_compressor(AV1_COMP *cpi) {
     // Deallocate allocated thread data.
     if (t < cpi->num_workers - 1) {
       aom_free(thread_data->td->counts);
-      av1_free_pc_tree(thread_data->td);
       aom_free(thread_data->td);
     }
   }

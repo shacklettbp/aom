@@ -151,6 +151,16 @@ struct macroblock {
 
   // Used to store sub partition's choices.
   MV pred_mv[MAX_REF_FRAMES];
+
+  // Used for stats and counts
+  int single_pred_diff;
+  int comp_pred_diff;
+  int hybrid_pred_diff;
+  int mode_index;
+  int inter_skippable;
+
+  // Which filter should be considered the best at the start of the RD search?
+  InterpFilter start_interp_filter;
 };
 
 #ifdef __cplusplus
