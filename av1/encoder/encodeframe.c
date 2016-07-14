@@ -93,14 +93,20 @@ static const uint16_t AV1_HIGH_VAR_OFFS_12[64] = {
 };
 #endif  // CONFIG_AOM_HIGHBITDEPTH
 
-void save_rd_results(RDContext *const rdctx, const ThreadData *const td, TOKENEXTRA *const tp_orig, TOKENEXTRA **tp_new, BLOCK_SIZE bsize) {
+void save_rd_results(const AV1_COMP *const cpi, RDContext *const rdctx, ThreadData *const td, TOKENEXTRA *const tp_orig, TOKENEXTRA **tp_new, int mi_row, int mi_col, BLOCK_SIZE bsize) {
   int i, r, x_idx, y;
-  const MACROBLOCK *const x = &td->mb;
-  const MACROBLOCKD *const xd = &x->e_mbd;
+  const AV1_COMMON *const cm = &cpi->common;
+  MACROBLOCK *const x = &td->mb;
+  MACROBLOCKD *const xd = &x->e_mbd;
   const RD_COUNTS *const rd_counts = &td->rd_counts;
   const FRAME_COUNTS *const frame_counts = td->counts;
   const int mi_width = num_8x8_blocks_wide_lookup[bsize];
   const int mi_height = num_8x8_blocks_high_lookup[bsize];
+
+  // TODO(xormask): there wind up being several unnecessary calls to
+  // setup_dst_planes, (here and set_offsets), work out way to avoid this
+  // Set up destination pointers. 
+  av1_setup_dst_planes(xd->plane, get_frame_new_buffer(cm), mi_row, mi_col);
 
   for (i = 0; i < MAX_MB_PLANE; i++) {
     const struct macroblockd_plane *pd = &xd->plane[i];
@@ -117,8 +123,12 @@ void save_rd_results(RDContext *const rdctx, const ThreadData *const td, TOKENEX
     }
   }
 
-  // Restore the coding context of the MB to that that was in place
-  // when the mode was picked for it
+  // Reset the base mi ptr TODO(xormask): perhaps this should also be saved 
+  xd->mi = cm->mi_grid_visible + xd->mi_stride * mi_row + mi_col;
+
+  // Save the MODE_INFO for the entire region covered by bsize. This ensures
+  // that any different MODE_INFOs within this bsize caused by split partition
+  // will be saved
   for (y = 0; y < mi_height; y++) {
     for (x_idx = 0; x_idx < mi_width; x_idx++) {
       MODE_INFO *mi_cur = xd->mi[x_idx + y * xd->mi_stride];
@@ -137,14 +147,17 @@ void save_rd_results(RDContext *const rdctx, const ThreadData *const td, TOKENEX
   memcpy(rdctx->best_tokens, tp_orig, rdctx->num_tokens * sizeof(rdctx->best_tokens[0]));
 }
 
-void restore_rd_results(const RDContext *const rdctx, ThreadData *const td, TOKENEXTRA ** tp, BLOCK_SIZE bsize) {
+void restore_rd_results(const AV1_COMP *const cpi, const RDContext *const rdctx, ThreadData *const td, TOKENEXTRA ** tp, int mi_row, int mi_col, BLOCK_SIZE bsize) {
   int i, r, x_idx, y;
+  const AV1_COMMON *const cm = &cpi->common;
   MACROBLOCK *const x = &td->mb;
   MACROBLOCKD *const xd = &x->e_mbd;
   RD_COUNTS *const rd_counts = &td->rd_counts;
   FRAME_COUNTS *const frame_counts = td->counts;
   const int mi_width = num_8x8_blocks_wide_lookup[bsize];
   const int mi_height = num_8x8_blocks_high_lookup[bsize];
+
+  av1_setup_dst_planes(xd->plane, get_frame_new_buffer(cm), mi_row, mi_col);
 
   for (i = 0; i < MAX_MB_PLANE; i++) {
     const struct macroblockd_plane *pd = &xd->plane[i];
@@ -160,6 +173,9 @@ void restore_rd_results(const RDContext *const rdctx, ThreadData *const td, TOKE
       dst += pd->dst.stride;
     }
   } 
+
+  // Reset the base mi ptr
+  xd->mi = cm->mi_grid_visible + xd->mi_stride * mi_row + mi_col;
   
   // Restore the coding context of the MB to that that was in place
   // when the mode was picked for it
@@ -249,21 +265,30 @@ static BLOCK_SIZE get_rd_var_based_fixed_partition(AV1_COMP *cpi, MACROBLOCK *x,
 static INLINE void set_mode_info_offsets(const AV1_COMP *const cpi,
                                          MACROBLOCK *const x,
                                          MACROBLOCKD *const xd, int mi_row,
-                                         int mi_col, BLOCK_SIZE bs) {
+                                         int mi_col) {
+  const AV1_COMMON *const cm = &cpi->common;
+  const int idx_str = xd->mi_stride * mi_row + mi_col;
+  xd->mi = cm->mi_grid_visible + idx_str;
+  xd->mi[0] = cm->mi + idx_str;
+  x->mbmi_ext = cpi->mbmi_ext_base + (mi_row * cm->mi_cols + mi_col);
+}
+
+static void set_mode_info_grid(const AV1_COMP *const cpi,
+                               MACROBLOCKD *const xd,
+                               int mi_row, int mi_col,
+                               BLOCK_SIZE bs) {
   int y, x_idx;
   const AV1_COMMON *const cm = &cpi->common;
   const int mi_width = num_8x8_blocks_wide_lookup[bs];
   const int mi_height = num_8x8_blocks_high_lookup[bs];
   const int idx_str = xd->mi_stride * mi_row + mi_col;
   MODE_INFO *const mi_addr = cm->mi + idx_str;
-  xd->mi = cm->mi_grid_visible + idx_str;
   for (y = 0; y < mi_height; y++)
     for (x_idx = 0; x_idx < mi_width; x_idx++)
       if ((xd->mb_to_right_edge >> (3 + MI_SIZE_LOG2)) + mi_width > x_idx &&
           (xd->mb_to_bottom_edge >> (3 + MI_SIZE_LOG2)) + mi_height > y) {
         xd->mi[x_idx + y * cm->mi_stride] = mi_addr;
       }
-  x->mbmi_ext = cpi->mbmi_ext_base + (mi_row * cm->mi_cols + mi_col);
 }
 
 static void set_offsets(const AV1_COMP *const cpi, const TileInfo *const tile,
@@ -278,7 +303,7 @@ static void set_offsets(const AV1_COMP *const cpi, const TileInfo *const tile,
 
   set_skip_context(xd, mi_row, mi_col);
 
-  set_mode_info_offsets(cpi, x, xd, mi_row, mi_col, bsize);
+  set_mode_info_offsets(cpi, x, xd, mi_row, mi_col);
 
   mbmi = &xd->mi[0]->mbmi;
 
@@ -327,7 +352,7 @@ static void set_block_size(AV1_COMP *const cpi, MACROBLOCK *const x,
                            MACROBLOCKD *const xd, int mi_row, int mi_col,
                            BLOCK_SIZE bsize) {
   if (cpi->common.mi_cols > mi_col && cpi->common.mi_rows > mi_row) {
-    set_mode_info_offsets(cpi, x, xd, mi_row, mi_col, bsize);
+    set_mode_info_offsets(cpi, x, xd, mi_row, mi_col);
     xd->mi[0]->mbmi.sb_type = bsize;
   }
 }
@@ -1092,6 +1117,12 @@ static void rd_block_pick_mode_encode(const AV1_COMP *const cpi, ThreadData *con
                                       int64_t best_rd) {
   rd_pick_sb_modes(cpi, tile_data, x, mi_row, mi_col, rd_cost, bsize, best_rd);
 
+  if (rd_cost->rdcost == INT64_MAX)
+    return;
+
+  // Set all the mi grid pointers for this block before doing a full encode
+  set_mode_info_grid(cpi, &x->e_mbd, mi_row, mi_col, bsize);
+
   av1_rd_encode_block(cpi, td, x, t, mi_row, mi_col, bsize, rd_cost);
   if (rd_cost->rdcost >= best_rd)
     av1_rd_cost_reset(rd_cost);
@@ -1439,7 +1470,7 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
 
   save_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
 
-  save_rd_results(rdctx, td, tp_orig, tp, bsize);
+  save_rd_results(cpi, rdctx, td, tp_orig, tp, mi_row, mi_col, bsize);
 
   if (bsize == BLOCK_16X16 && cpi->oxcf.aq_mode) {
     set_offsets(cpi, tile_info, x, mi_row, mi_col, bsize);
@@ -1478,7 +1509,7 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
 
 
         chosen_rdc = current_rdc;
-        save_rd_results(rdctx, td, tp_orig, tp, bsize);
+        save_rd_results(cpi, rdctx, td, tp_orig, tp, mi_row, mi_col, bsize);
       }
 
 
@@ -1568,7 +1599,7 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
         RDCOST(x->rdmult, x->rddiv, current_rdc.rate, current_rdc.dist);
 
     if (current_rdc.rdcost < chosen_rdc.rdcost) { 
-      save_rd_results(rdctx, td, tp_orig, tp, bsize);
+      save_rd_results(cpi, rdctx, td, tp_orig, tp, mi_row, mi_col, bsize);
 
       chosen_rdc = current_rdc;
     }
@@ -1625,7 +1656,7 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
 
   if (current_rdc.rdcost < chosen_rdc.rdcost) {
     chosen_rdc = current_rdc;
-    save_rd_results(rdctx, td, tp_orig, tp, bsize);
+    save_rd_results(cpi, rdctx, td, tp_orig, tp, mi_row, mi_col, bsize);
   }
 
   restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
@@ -1635,7 +1666,7 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
   if (bsize == BLOCK_64X64)
     assert(chosen_rdc.rate < INT_MAX && chosen_rdc.dist < INT64_MAX);
 
-  restore_rd_results(rdctx, td, tp, bsize);
+  restore_rd_results(cpi, rdctx, td, tp, mi_row, mi_col, bsize);
 
   *rate = chosen_rdc.rate;
   *dist = chosen_rdc.dist;
@@ -1930,7 +1961,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
 
   set_offsets(cpi, tile_info, x, mi_row, mi_col, bsize);
 
-  save_rd_results(rdctx, td, tp_orig, tp, bsize);
+  save_rd_results(cpi, rdctx, td, tp_orig, tp, mi_row, mi_col, bsize);
 
   // Hack so start_interp_filter is set to SWITCHABLE first
   rdctx->best_mi[0].mbmi.interp_filter = SWITCHABLE;
@@ -2065,7 +2096,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
           do_rectangular_split = 0;
         }
 
-        save_rd_results(rdctx, td, tp_orig, tp, bsize);
+        save_rd_results(cpi, rdctx, td, tp_orig, tp, mi_row, mi_col, bsize);
 
 #if CONFIG_FP_MB_STATS
         // Check if every 16x16 first pass block statistics has zero
@@ -2169,7 +2200,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
       if (sum_rdc.rdcost < best_rdc.rdcost) {
         best_rdc = sum_rdc;
 
-        save_rd_results(rdctx, td, tp_orig, tp, bsize);
+        save_rd_results(cpi, rdctx, td, tp_orig, tp, mi_row, mi_col, bsize);
       }
     } else if (cpi->sf.less_rectangular_check) {
       // skip rectangular partition test when larger block size
@@ -2217,7 +2248,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
       sum_rdc.rdcost = RDCOST(x->rdmult, x->rddiv, sum_rdc.rate, sum_rdc.dist);
       if (sum_rdc.rdcost < best_rdc.rdcost) {
         best_rdc = sum_rdc;
-        save_rd_results(rdctx, td, tp_orig, tp, bsize);
+        save_rd_results(cpi, rdctx, td, tp_orig, tp, mi_row, mi_col, bsize);
       }
     }
     restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
@@ -2258,7 +2289,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
       sum_rdc.rdcost = RDCOST(x->rdmult, x->rddiv, sum_rdc.rate, sum_rdc.dist);
       if (sum_rdc.rdcost < best_rdc.rdcost) {
         best_rdc = sum_rdc;
-        save_rd_results(rdctx, td, tp_orig, tp, bsize);
+        save_rd_results(cpi, rdctx, td, tp_orig, tp, mi_row, mi_col, bsize);
       }
     }
     restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
@@ -2272,7 +2303,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   *rd_cost = best_rdc;
 
   if (best_rdc.rate < INT_MAX && best_rdc.dist < INT64_MAX) {
-    restore_rd_results(rdctx, td, tp, bsize);
+    restore_rd_results(cpi, rdctx, td, tp, mi_row, mi_col, bsize);
   }
 
   if (bsize == BLOCK_64X64) {
