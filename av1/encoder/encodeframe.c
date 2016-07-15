@@ -93,110 +93,6 @@ static const uint16_t AV1_HIGH_VAR_OFFS_12[64] = {
 };
 #endif  // CONFIG_AOM_HIGHBITDEPTH
 
-void save_rd_results(const AV1_COMP *const cpi, RDContext *const rdctx, ThreadData *const td, TOKENEXTRA *const tp_orig, TOKENEXTRA **tp_new, int mi_row, int mi_col, BLOCK_SIZE bsize) {
-  int i, r, x_idx, y;
-  const AV1_COMMON *const cm = &cpi->common;
-  MACROBLOCK *const x = &td->mb;
-  MACROBLOCKD *const xd = &x->e_mbd;
-  const RD_COUNTS *const rd_counts = &td->rd_counts;
-  const FRAME_COUNTS *const frame_counts = td->counts;
-  const int mi_width = num_8x8_blocks_wide_lookup[bsize];
-  const int mi_height = num_8x8_blocks_high_lookup[bsize];
-  MODE_INFO **mi_base = cm->mi_grid_visible + xd->mi_stride * mi_row + mi_col;
-  MB_MODE_INFO_EXT *mbmi_ext = cpi->mbmi_ext_base + mi_row * cm->mi_cols + mi_col;
-
-  // TODO(xormask): there wind up being several unnecessary calls to
-  // setup_dst_planes, (here and set_offsets), work out way to avoid this
-  // Set up destination pointers. 
-  av1_setup_dst_planes(xd->plane, get_frame_new_buffer(cm), mi_row, mi_col);
-
-  for (i = 0; i < MAX_MB_PLANE; i++) {
-    const struct macroblockd_plane *pd = &xd->plane[i];
-    BLOCK_SIZE bs = get_plane_block_size(bsize, pd);
-    const int width = 4 * num_4x4_blocks_wide_lookup[bs];
-    const int height = 4 * num_4x4_blocks_high_lookup[bs];
-    const uint8_t *src = pd->dst.buf;
-    uint8_t *dst = rdctx->best_buf[i];
-
-    for (r = 0; r < height; r++) {
-      memcpy(dst, src, width);
-      dst += width;
-      src += pd->dst.stride;
-    }
-  }
-
-  // Save the MODE_INFO for the entire region covered by bsize. This ensures
-  // that any different MODE_INFOs within this bsize caused by split partition
-  // will be saved
-  for (y = 0; y < mi_height; y++) {
-    for (x_idx = 0; x_idx < mi_width; x_idx++) {
-      MODE_INFO *mi_cur = mi_base[x_idx + y * xd->mi_stride];
-
-      rdctx->best_mi_ptrs[x_idx + y * mi_width] = mi_cur;
-      if (mi_cur)
-        rdctx->best_mi[x_idx + y * mi_width] = *mi_cur;
-    }
-  }
-  rdctx->best_mbmi_ext = *mbmi_ext;
-
-  rdctx->best_rd_counts = *rd_counts;
-  rdctx->best_frame_counts = *frame_counts;
-
-  // Save tokens
-  rdctx->num_tokens = *tp_new - tp_orig;
-  assert(rdctx->num_tokens * sizeof(TOKENEXTRA) <= sizeof(rdctx->best_tokens));
-  memcpy(rdctx->best_tokens, tp_orig, rdctx->num_tokens * sizeof(rdctx->best_tokens[0]));
-}
-
-void restore_rd_results(const AV1_COMP *const cpi, const RDContext *const rdctx, ThreadData *const td, TOKENEXTRA ** tp, int mi_row, int mi_col, BLOCK_SIZE bsize) {
-  int i, r, x_idx, y;
-  const AV1_COMMON *const cm = &cpi->common;
-  MACROBLOCK *const x = &td->mb;
-  MACROBLOCKD *const xd = &x->e_mbd;
-  RD_COUNTS *const rd_counts = &td->rd_counts;
-  FRAME_COUNTS *const frame_counts = td->counts;
-  const int mi_width = num_8x8_blocks_wide_lookup[bsize];
-  const int mi_height = num_8x8_blocks_high_lookup[bsize];
-  MODE_INFO **mi_base = cm->mi_grid_visible + xd->mi_stride * mi_row + mi_col;
-  MB_MODE_INFO_EXT *mbmi_ext = cpi->mbmi_ext_base + mi_row * cm->mi_cols + mi_col;
-
-  av1_setup_dst_planes(xd->plane, get_frame_new_buffer(cm), mi_row, mi_col);
-
-  for (i = 0; i < MAX_MB_PLANE; i++) {
-    const struct macroblockd_plane *pd = &xd->plane[i];
-    BLOCK_SIZE bs = get_plane_block_size(bsize, pd);
-    const int width = 4 * num_4x4_blocks_wide_lookup[bs];
-    const int height = 4 * num_4x4_blocks_high_lookup[bs];
-    const uint8_t *src = rdctx->best_buf[i];
-    uint8_t *dst = pd->dst.buf;
-
-    for (r = 0; r < height; r++) {
-      memcpy(dst, src, width);
-      src += width;
-      dst += pd->dst.stride;
-    }
-  } 
-
-  // Restore the coding context of the MB to that that was in place
-  // when the mode was picked for it
-  for (y = 0; y < mi_height; y++) {
-    for (x_idx = 0; x_idx < mi_width; x_idx++) {
-      MODE_INFO **mi_cur = &mi_base[x_idx + y * xd->mi_stride];
-      *mi_cur = rdctx->best_mi_ptrs[x_idx + y * mi_width];
-      if (*mi_cur)
-        **mi_cur = rdctx->best_mi[x_idx + y * mi_width];
-    }
-  }
-
-  *mbmi_ext = rdctx->best_mbmi_ext;
-
-  *rd_counts = rdctx->best_rd_counts;
-  *frame_counts = rdctx->best_frame_counts;
-
-  memcpy(*tp, rdctx->best_tokens, rdctx->num_tokens * sizeof(**tp));
-  *tp += rdctx->num_tokens;
-}
-
 unsigned int av1_get_sby_perpixel_variance(const AV1_COMP *cpi,
                                            const struct buf_2d *ref,
                                            BLOCK_SIZE bs) {
@@ -1304,11 +1200,10 @@ static void rd_block_pick_mode_encode(const AV1_COMP *const cpi, ThreadData *con
   update_stats(&cpi->common, td);
 }
 
-
-static void restore_context(MACROBLOCK *const x, TOKENEXTRA *tp_orig, TOKENEXTRA **tp, int mi_row, int mi_col,
-                            ENTROPY_CONTEXT a[16 * MAX_MB_PLANE],
-                            ENTROPY_CONTEXT l[16 * MAX_MB_PLANE],
-                            PARTITION_CONTEXT sa[8], PARTITION_CONTEXT sl[8],
+static void restore_context(MACROBLOCK *const x, int mi_row, int mi_col,
+                            const ENTROPY_CONTEXT a[16 * MAX_MB_PLANE],
+                            const ENTROPY_CONTEXT l[16 * MAX_MB_PLANE],
+                            const PARTITION_CONTEXT sa[8], const PARTITION_CONTEXT sl[8],
                             BLOCK_SIZE bsize) {
   MACROBLOCKD *const xd = &x->e_mbd;
   int p;
@@ -1331,10 +1226,6 @@ static void restore_context(MACROBLOCK *const x, TOKENEXTRA *tp_orig, TOKENEXTRA
          sizeof(*xd->above_seg_context) * mi_width);
   memcpy(xd->left_seg_context + (mi_row & MI_MASK), sl,
          sizeof(xd->left_seg_context[0]) * mi_height);
-
-
-  // Reset the position of the token pointer
-  *tp = tp_orig;
 }
 
 static void save_context(MACROBLOCK *const x, int mi_row, int mi_col,
@@ -1365,6 +1256,116 @@ static void save_context(MACROBLOCK *const x, int mi_row, int mi_col,
          sizeof(*xd->above_seg_context) * mi_width);
   memcpy(sl, xd->left_seg_context + (mi_row & MI_MASK),
          sizeof(xd->left_seg_context[0]) * mi_height);
+
+  printf("%d %d\n", a[0], sa[0]);
+}
+
+void save_rd_results(const AV1_COMP *const cpi, RDContext *const rdctx, ThreadData *const td, TOKENEXTRA *const tp_orig, TOKENEXTRA **tp_new, int mi_row, int mi_col, BLOCK_SIZE bsize) {
+  int i, r, x_idx, y;
+  const AV1_COMMON *const cm = &cpi->common;
+  MACROBLOCK *const x = &td->mb;
+  MACROBLOCKD *const xd = &x->e_mbd;
+  const RD_COUNTS *const rd_counts = &td->rd_counts;
+  const FRAME_COUNTS *const frame_counts = td->counts;
+  const int mi_width = num_8x8_blocks_wide_lookup[bsize];
+  const int mi_height = num_8x8_blocks_high_lookup[bsize];
+  MODE_INFO **mi_base = cm->mi_grid_visible + xd->mi_stride * mi_row + mi_col;
+  MB_MODE_INFO_EXT *mbmi_ext = cpi->mbmi_ext_base + mi_row * cm->mi_cols + mi_col;
+
+  // TODO(xormask): there wind up being several unnecessary calls to
+  // setup_dst_planes, (here and set_offsets), work out way to avoid this
+  // Set up destination pointers. 
+  av1_setup_dst_planes(xd->plane, get_frame_new_buffer(cm), mi_row, mi_col);
+
+  for (i = 0; i < MAX_MB_PLANE; i++) {
+    const struct macroblockd_plane *pd = &xd->plane[i];
+    BLOCK_SIZE bs = get_plane_block_size(bsize, pd);
+    const int width = 4 * num_4x4_blocks_wide_lookup[bs];
+    const int height = 4 * num_4x4_blocks_high_lookup[bs];
+    const uint8_t *src = pd->dst.buf;
+    uint8_t *dst = rdctx->best_buf[i];
+
+    for (r = 0; r < height; r++) {
+      memcpy(dst, src, width);
+      dst += width;
+      src += pd->dst.stride;
+    }
+  }
+
+  // Save the MODE_INFO for the entire region covered by bsize. This ensures
+  // that any different MODE_INFOs within this bsize caused by split partition
+  // will be saved
+  for (y = 0; y < mi_height; y++) {
+    for (x_idx = 0; x_idx < mi_width; x_idx++) {
+      MODE_INFO *mi_cur = mi_base[x_idx + y * xd->mi_stride];
+
+      rdctx->best_mi_ptrs[x_idx + y * mi_width] = mi_cur;
+      if (mi_cur)
+        rdctx->best_mi[x_idx + y * mi_width] = *mi_cur;
+    }
+  }
+  rdctx->best_mbmi_ext = *mbmi_ext;
+
+  rdctx->best_rd_counts = *rd_counts;
+  rdctx->best_frame_counts = *frame_counts;
+
+  // Save tokens
+  rdctx->num_tokens = *tp_new - tp_orig;
+  assert(rdctx->num_tokens * sizeof(TOKENEXTRA) <= sizeof(rdctx->best_tokens));
+  memcpy(rdctx->best_tokens, tp_orig, rdctx->num_tokens * sizeof(rdctx->best_tokens[0]));
+ 
+  save_context(x, mi_row, mi_col, rdctx->a, rdctx->l, rdctx->sa, rdctx->sl, bsize);
+}
+
+void restore_rd_results(const AV1_COMP *const cpi, const RDContext *const rdctx, ThreadData *const td, TOKENEXTRA ** tp, int mi_row, int mi_col, BLOCK_SIZE bsize) {
+  int i, r, x_idx, y;
+  const AV1_COMMON *const cm = &cpi->common;
+  MACROBLOCK *const x = &td->mb;
+  MACROBLOCKD *const xd = &x->e_mbd;
+  RD_COUNTS *const rd_counts = &td->rd_counts;
+  FRAME_COUNTS *const frame_counts = td->counts;
+  const int mi_width = num_8x8_blocks_wide_lookup[bsize];
+  const int mi_height = num_8x8_blocks_high_lookup[bsize];
+  MODE_INFO **mi_base = cm->mi_grid_visible + xd->mi_stride * mi_row + mi_col;
+  MB_MODE_INFO_EXT *mbmi_ext = cpi->mbmi_ext_base + mi_row * cm->mi_cols + mi_col;
+
+  av1_setup_dst_planes(xd->plane, get_frame_new_buffer(cm), mi_row, mi_col);
+
+  for (i = 0; i < MAX_MB_PLANE; i++) {
+    const struct macroblockd_plane *pd = &xd->plane[i];
+    BLOCK_SIZE bs = get_plane_block_size(bsize, pd);
+    const int width = 4 * num_4x4_blocks_wide_lookup[bs];
+    const int height = 4 * num_4x4_blocks_high_lookup[bs];
+    const uint8_t *src = rdctx->best_buf[i];
+    uint8_t *dst = pd->dst.buf;
+
+    for (r = 0; r < height; r++) {
+      memcpy(dst, src, width);
+      src += width;
+      dst += pd->dst.stride;
+    }
+  } 
+
+  // Restore the coding context of the MB to that that was in place
+  // when the mode was picked for it
+  for (y = 0; y < mi_height; y++) {
+    for (x_idx = 0; x_idx < mi_width; x_idx++) {
+      MODE_INFO **mi_cur = &mi_base[x_idx + y * xd->mi_stride];
+      *mi_cur = rdctx->best_mi_ptrs[x_idx + y * mi_width];
+      if (*mi_cur)
+        **mi_cur = rdctx->best_mi[x_idx + y * mi_width];
+    }
+  }
+
+  *mbmi_ext = rdctx->best_mbmi_ext;
+
+  *rd_counts = rdctx->best_rd_counts;
+  *frame_counts = rdctx->best_frame_counts;
+
+  memcpy(*tp, rdctx->best_tokens, rdctx->num_tokens * sizeof(**tp));
+  *tp += rdctx->num_tokens;
+
+  restore_context(x, mi_row, mi_col, rdctx->a, rdctx->l, rdctx->sa, rdctx->sl, bsize);
 }
 
 // Check to see if the given partition size is allowed for a specified number
@@ -1521,7 +1522,8 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
       }
 
 
-      restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
+      restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+      *tp = tp_orig;
       mi_8x8[0]->mbmi.sb_type = bs_type;
     }
   }
@@ -1623,7 +1625,8 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
     BLOCK_SIZE split_subsize = get_subsize(bsize, PARTITION_SPLIT);
     current_rdc.rate = 0;
     current_rdc.dist = 0;
-    restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
+    restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+    *tp = tp_orig;
 
     // Split partition.
     for (i = 0; i < 4; i++) {
@@ -1640,7 +1643,8 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
       rd_block_pick_mode_encode(cpi, td, tile_data, x, tp, mi_row + y_idx, mi_col + x_idx,
                        &tmp_rdc, split_subsize, INT64_MAX);
 
-      restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
+      restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+      *tp = tp_orig;
 
       if (tmp_rdc.rate == INT_MAX || tmp_rdc.dist == INT64_MAX) {
         av1_rd_cost_reset(&current_rdc);
@@ -1667,7 +1671,7 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
     save_rd_results(cpi, rdctx, td, tp_orig, tp, mi_row, mi_col, bsize);
   }
 
-  restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
+  *tp = tp_orig;
 
   // We must have chosen a partitioning and encoding or we'll fail later on.
   // No other opportunities for success.
@@ -2153,7 +2157,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
 #endif
       }
     }
-    restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
+    *tp = tp_orig;
   }
 
   // store estimated motion vector
@@ -2164,7 +2168,10 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   // the starting point of motion search in the following partition type check.
   if (do_square_split) {
     int reached_last_index = 0;
+    restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+
     subsize = get_subsize(bsize, PARTITION_SPLIT);
+
     if (bsize == BLOCK_8X8) {
       if (cpi->sf.adaptive_pred_interp_filter && partition_none_allowed)
         x->start_interp_filter = rdctx->best_mi[0].mbmi.interp_filter;
@@ -2215,12 +2222,13 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
       // gives better rd cost
       do_rectangular_split &= !partition_none_allowed;
     }
-    restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
+    *tp = tp_orig;
   }
 
   // PARTITION_HORZ
   if (partition_horz_allowed &&
       (do_rectangular_split || av1_active_h_edge(cpi, mi_row, mi_step))) {
+    restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
     subsize = get_subsize(bsize, PARTITION_HORZ);
     if (cpi->sf.adaptive_motion_search) load_pred_mv(x, predmv_backup);
     if (cpi->sf.adaptive_pred_interp_filter && bsize == BLOCK_8X8 &&
@@ -2259,11 +2267,13 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
         save_rd_results(cpi, rdctx, td, tp_orig, tp, mi_row, mi_col, bsize);
       }
     }
-    restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
+    *tp = tp_orig;
   }
   // PARTITION_VERT
   if (partition_vert_allowed &&
       (do_rectangular_split || av1_active_v_edge(cpi, mi_col, mi_step))) {
+    restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+
     subsize = get_subsize(bsize, PARTITION_VERT);
 
     if (cpi->sf.adaptive_motion_search) load_pred_mv(x, predmv_backup);
@@ -2300,7 +2310,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
         save_rd_results(cpi, rdctx, td, tp_orig, tp, mi_row, mi_col, bsize);
       }
     }
-    restore_context(x, tp_orig, tp, mi_row, mi_col, a, l, sa, sl, bsize);
+    *tp = tp_orig;
   }
 
   // TODO(jbb): This code added so that we avoid static analysis

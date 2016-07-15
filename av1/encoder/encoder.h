@@ -280,6 +280,11 @@ typedef struct RDContext {
   FRAME_COUNTS best_frame_counts;
   TOKENEXTRA best_tokens[(MAX_SB_SQUARE + 64) * 3];
   int num_tokens;
+  
+  ENTROPY_CONTEXT a[16 * MAX_MB_PLANE];
+  ENTROPY_CONTEXT l[16 * MAX_MB_PLANE];
+  PARTITION_CONTEXT sa[8];
+  PARTITION_CONTEXT sl[8];
 } RDContext;
 
 // TODO(jingning) All spatially adaptive variables should go to TileDataEnc.
