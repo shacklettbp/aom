@@ -5330,6 +5330,50 @@ void av1_rd_encode_block(const AV1_COMP *const cpi, ThreadData *const td, MACROB
   // to update rd_cost
   (void)rd_cost;
 
+#if CONFIG_INTERNAL_STATS
+  {
+    unsigned int *const mode_chosen_counts =
+        (unsigned int *)cpi->mode_chosen_counts;  // Cast const away.
+    if (frame_is_intra_only(cm)) {
+      static const int kf_mode_index[] = {
+        THR_DC /*DC_PRED*/,          THR_V_PRED /*V_PRED*/,
+        THR_H_PRED /*H_PRED*/,       THR_D45_PRED /*D45_PRED*/,
+        THR_D135_PRED /*D135_PRED*/, THR_D117_PRED /*D117_PRED*/,
+        THR_D153_PRED /*D153_PRED*/, THR_D207_PRED /*D207_PRED*/,
+        THR_D63_PRED /*D63_PRED*/,   THR_TM /*TM_PRED*/,
+      };
+      ++mode_chosen_counts[kf_mode_index[mbmi->mode]];
+    } else {
+      // Note how often each mode chosen as best
+      ++mode_chosen_counts[ctx->best_mode_index];
+    }
+  }
+#endif
+  if (!frame_is_intra_only(cm)) {
+    if (is_inter_block(mbmi)) {
+      av1_update_mv_count(td);
+
+      if (cm->interp_filter == SWITCHABLE) {
+#if CONFIG_EXT_INTERP
+        if (is_interp_needed(xd))
+#endif
+        {
+          const int ctx = av1_get_pred_context_switchable_interp(xd);
+          ++td->counts->switchable_interp[ctx][mbmi->interp_filter];
+        }
+      }
+
+#if CONFIG_MOTION_VAR
+      if (is_motion_variation_allowed(mbmi))
+        ++td->counts->motion_mode[bsize][mbmi->motion_mode];
+#endif  // CONFIG_MOTION_VAR
+    }
+
+    td->rd_counts.comp_pred_diff[SINGLE_REFERENCE] += x->single_pred_diff;
+    td->rd_counts.comp_pred_diff[COMPOUND_REFERENCE] += x->comp_pred_diff;
+    td->rd_counts.comp_pred_diff[REFERENCE_MODE_SELECT] += x->hybrid_pred_diff;
+  }
+
   for (h = 0; h < y_mis; ++h) {
     MV_REF *const frame_mv = frame_mvs + h * cm->mi_cols;
     for (w = 0; w < x_mis; ++w) {
@@ -5395,52 +5439,6 @@ void av1_rd_encode_block(const AV1_COMP *const cpi, ThreadData *const td, MACROB
 
     av1_encode_sb(x, AOMMAX(bsize, BLOCK_8X8));
     av1_tokenize_sb(cpi, td, t, 0, AOMMAX(bsize, BLOCK_8X8));
-  }
-
-  // FIXME below this is counts
-
-  #if CONFIG_INTERNAL_STATS
-  {
-    unsigned int *const mode_chosen_counts =
-        (unsigned int *)cpi->mode_chosen_counts;  // Cast const away.
-    if (frame_is_intra_only(cm)) {
-      static const int kf_mode_index[] = {
-        THR_DC /*DC_PRED*/,          THR_V_PRED /*V_PRED*/,
-        THR_H_PRED /*H_PRED*/,       THR_D45_PRED /*D45_PRED*/,
-        THR_D135_PRED /*D135_PRED*/, THR_D117_PRED /*D117_PRED*/,
-        THR_D153_PRED /*D153_PRED*/, THR_D207_PRED /*D207_PRED*/,
-        THR_D63_PRED /*D63_PRED*/,   THR_TM /*TM_PRED*/,
-      };
-      ++mode_chosen_counts[kf_mode_index[mbmi->mode]];
-    } else {
-      // Note how often each mode chosen as best
-      ++mode_chosen_counts[ctx->best_mode_index];
-    }
-  }
-#endif
-  if (!frame_is_intra_only(cm)) {
-    if (is_inter_block(mbmi)) {
-      av1_update_mv_count(td);
-
-      if (cm->interp_filter == SWITCHABLE) {
-#if CONFIG_EXT_INTERP
-        if (is_interp_needed(xd))
-#endif
-        {
-          const int ctx = av1_get_pred_context_switchable_interp(xd);
-          ++td->counts->switchable_interp[ctx][mbmi->interp_filter];
-        }
-      }
-
-#if CONFIG_MOTION_VAR
-      if (is_motion_variation_allowed(mbmi))
-        ++td->counts->motion_mode[bsize][mbmi->motion_mode];
-#endif  // CONFIG_MOTION_VAR
-    }
-
-    td->rd_counts.comp_pred_diff[SINGLE_REFERENCE] += x->single_pred_diff;
-    td->rd_counts.comp_pred_diff[COMPOUND_REFERENCE] += x->comp_pred_diff;
-    td->rd_counts.comp_pred_diff[REFERENCE_MODE_SELECT] += x->hybrid_pred_diff;
   }
 
   if (cm->tx_mode == TX_MODE_SELECT && mbmi->sb_type >= BLOCK_8X8 &&

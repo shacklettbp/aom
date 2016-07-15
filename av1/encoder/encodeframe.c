@@ -1293,7 +1293,7 @@ static void rd_block_pick_mode_encode(const AV1_COMP *const cpi, ThreadData *con
 
   // Set all the mi grid pointers for this block before doing a full encode
   set_mode_info_grid(cpi, &x->e_mbd, mi_row, mi_col, bsize);
-
+  
   av1_rd_encode_block(cpi, td, x, t, mi_row, mi_col, bsize, rd_cost);
 
   if (rd_cost->rdcost >= best_rd) {
