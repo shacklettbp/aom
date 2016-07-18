@@ -200,6 +200,7 @@ static void set_offsets(const AV1_COMP *const cpi, const TileInfo *const tile,
   const int bwl = b_width_log2_lookup[AOMMAX(bsize, BLOCK_8X8)];
   const int bhl = b_height_log2_lookup[AOMMAX(bsize, BLOCK_8X8)];
   const struct segmentation *const seg = &cm->seg;
+  const trans_low_t *qcoeff_pbuf[MAX_MB_PLANE] = { x->qcoeff_y, x->qcoeff_u, x->qcoeff_v };
 
   set_skip_context(xd, mi_row, mi_col);
 
@@ -209,6 +210,11 @@ static void set_offsets(const AV1_COMP *const cpi, const TileInfo *const tile,
 
   // Set up destination pointers.
   av1_setup_dst_planes(xd->plane, get_frame_new_buffer(cm), mi_row, mi_col);
+
+  for (i = 0; i < MAX_MB_PLANE; ++i) {
+    struct macroblock_plane *const p = &x->planes[i];
+    p->qcoeff[i] = qcoeff_pbuf[i] + MI_SIZE * (mi_row - tile->mi_row_start) * MAX_SB_SIZE + (mi_col - tile->mi_col_start);
+  }
 
   // Set up limit values for MV components.
   // Mv beyond the range do not produce new/different prediction block.
@@ -1268,6 +1274,8 @@ void save_rd_results(const AV1_COMP *const cpi, RDContext *const rdctx, ThreadDa
       dst += width;
       src += pd->dst.stride;
     }
+
+
   }
 
   // Save the MODE_INFO for the entire region covered by bsize. This ensures
@@ -1333,12 +1341,7 @@ void restore_rd_results(const AV1_COMP *const cpi, const RDContext *const rdctx,
 static void rd_block_pick_mode_encode(const AV1_COMP *const cpi, ThreadData *const td, TileDataEnc *const tile_data,
                                       MACROBLOCK *const x, int mi_row, int mi_col,
                                       RD_COST *rd_cost, BLOCK_SIZE bsize, int64_t best_rd) {
-  // FIXME: is this even necessary?
-  ENTROPY_CONTEXT l[16 * MAX_MB_PLANE], a[16 * MAX_MB_PLANE];
-  PARTITION_CONTEXT sl[8], sa[8];
-  save_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
   rd_pick_sb_modes(cpi, tile_data, x, mi_row, mi_col, rd_cost, bsize, best_rd);
-  restore_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
 
   if (rd_cost->rdcost == INT64_MAX)
     return;
@@ -1993,9 +1996,10 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
     partition_vert_allowed &= force_vert_split;
   }
 
-  do_square_split = 0;
+  do_square_split = 1;
   partition_horz_allowed = 0;
   partition_vert_allowed = 0;
+  partition_none_allowed = 0;
 
   save_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
 
@@ -2348,7 +2352,6 @@ static void sum_intra_stats(FRAME_COUNTS *counts, const MODE_INFO *mi,
 }
 
 static void tokenize_block(const AV1_COMP *const cpi, TileDataEnc *tile_data, ThreadData *td, TOKENEXTRA **t, MACROBLOCK *const x, int mi_row, int mi_col, BLOCK_SIZE bsize) {
-  static int tokenized_blocks = 0;
   int w, h;
   const AV1_COMMON *const cm = &cpi->common;
   TileInfo *const tile_info = &tile_data->tile_info;
@@ -2478,9 +2481,11 @@ static void tokenize_block(const AV1_COMP *const cpi, TileDataEnc *tile_data, Th
 static void tokenize_superblock(const AV1_COMP *cpi, TileDataEnc *tile_data, ThreadData *td, TOKENEXTRA **t, int mi_row, int mi_col, BLOCK_SIZE bsize) {
   const AV1_COMMON *const cm = &cpi->common;
   MACROBLOCK *const x = &td->mb;
+  MACROBLOCKD *const xd = &x->e_mbd;
 
   const int bsl = b_width_log2_lookup[bsize];
   const int bs = (1 << bsl) / 4;
+  int part_ctx;
   PARTITION_TYPE partition;
   BLOCK_SIZE subsize;
   const MODE_INFO *mi = NULL;
@@ -2491,8 +2496,14 @@ static void tokenize_superblock(const AV1_COMP *cpi, TileDataEnc *tile_data, Thr
 
   partition = partition_lookup[bsl][mi->mbmi.sb_type];
   subsize = get_subsize(bsize, partition);
+  printf("%d\n", subsize);
 
-  if (subsize == BLOCK_8X8) {
+  part_ctx = partition_plane_context(xd, mi_row, mi_col, bsize);
+
+  partition = partition_lookup[bsl][subsize];
+  td->counts->partition[part_ctx][partition]++;
+
+  if (bsize == BLOCK_8X8) {
     tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
   } else {
     switch (partition) {
@@ -2510,14 +2521,17 @@ static void tokenize_superblock(const AV1_COMP *cpi, TileDataEnc *tile_data, Thr
           tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col + bs, subsize);
         break;
       case PARTITION_SPLIT:
-        tokenize_superblock(cpi, tile_data, td, t, mi_row, mi_col, bsize);
-        tokenize_superblock(cpi, tile_data, td, t, mi_row, mi_col, bsize); 
-        tokenize_superblock(cpi, tile_data, td, t, mi_row, mi_col, bsize); 
-        tokenize_superblock(cpi, tile_data, td, t, mi_row, mi_col, bsize); 
+        tokenize_superblock(cpi, tile_data, td, t, mi_row, mi_col, subsize);
+        tokenize_superblock(cpi, tile_data, td, t, mi_row, mi_col + bs, subsize); 
+        tokenize_superblock(cpi, tile_data, td, t, mi_row + bs, mi_col, subsize); 
+        tokenize_superblock(cpi, tile_data, td, t, mi_row + bs, mi_col + bs, subsize); 
         break;
       default: assert(0);
     }
   }
+
+  if (partition != PARTITION_SPLIT || bsize == BLOCK_8X8)
+    update_partition_context(xd, mi_row, mi_col, subsize, bsize);
 }
 
 static void encode_rd_sb_row(AV1_COMP *cpi, ThreadData *td,
@@ -2528,6 +2542,8 @@ static void encode_rd_sb_row(AV1_COMP *cpi, ThreadData *td,
   MACROBLOCK *const x = &td->mb;
   MACROBLOCKD *const xd = &x->e_mbd;
   SPEED_FEATURES *const sf = &cpi->sf;
+  ENTROPY_CONTEXT l[16 * MAX_MB_PLANE], a[16 * MAX_MB_PLANE];
+  PARTITION_CONTEXT sl[8], sa[8];
   int mi_col;
 
   // Initialize the left context for the new SB row
@@ -2545,6 +2561,10 @@ static void encode_rd_sb_row(AV1_COMP *cpi, ThreadData *td,
 
     const int idx_str = cm->mi_stride * mi_row + mi_col;
     MODE_INFO **mi = cm->mi_grid_visible + idx_str;
+
+    printf("---SB---\n");
+
+    save_entropy_context(x, mi_row, mi_col, a, l, sa, sl, BLOCK_64X64);
 
     av1_zero(x->pred_mv);
 
@@ -2587,7 +2607,8 @@ static void encode_rd_sb_row(AV1_COMP *cpi, ThreadData *td,
     }
 
     // Tokenize the superblock
-    av1_zero(xd->left_seg_context);
+    // FIXME why is this entropy crap necessary??
+    restore_entropy_context(x, mi_row, mi_col, a, l, sa, sl, BLOCK_64X64);
     tokenize_superblock(cpi, tile_data, td, tp, mi_row, mi_col, BLOCK_64X64);
   }
 }
@@ -2716,16 +2737,13 @@ void av1_encode_tile(AV1_COMP *cpi, ThreadData *td, int tile_row,
   int mi_row, i;
 
   // Set up pointers to per thread motion search counters.
-  td->mb.m_search_count_ptr = &td->rd_counts.m_search_count;
-  td->mb.ex_search_count_ptr = &td->rd_counts.ex_search_count;
+  x->m_search_count_ptr = &td->rd_counts.m_search_count;
+  x->ex_search_count_ptr = &td->rd_counts.ex_search_count;
 
   // Set up pointers to per thread coefficient storage.
-  // TODO(xormask): move this to global storage like the dst buffer
   for (i = 0; i < MAX_MB_PLANE; ++i) {
     CHECK_MEM_ERROR(cm, p[i].coeff,
                   aom_memalign(32, MAX_SB_SQUARE * sizeof(*p[i].coeff)));
-    CHECK_MEM_ERROR(cm, p[i].qcoeff,
-                    aom_memalign(32, MAX_SB_SQUARE * sizeof(*p[i].qcoeff)));
     CHECK_MEM_ERROR(cm, pd[i].dqcoeff,
                       aom_memalign(32, MAX_SB_SQUARE * sizeof(*pd[i].dqcoeff)));
     CHECK_MEM_ERROR(cm, p[i].eobs,

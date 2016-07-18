@@ -411,6 +411,7 @@ static void tokenize_b(int plane, int block, int blk_row, int blk_col,
   (void)plane_bsize;
   pt = get_entropy_context(tx_size, pd->above_context + blk_col,
                            pd->left_context + blk_row);
+  printf("EC: %d %d\n", pt, tx_size);
   scan = so->scan;
   nb = so->neighbors;
   c = 0;

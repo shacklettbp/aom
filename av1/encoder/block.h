@@ -122,6 +122,11 @@ struct macroblock {
   int mv_row_min;
   int mv_row_max;
 
+  // Quantized coefficient storage buffers
+  DECLARE_ALIGNED(32, trans_low_t, qcoeff_y[MAX_SB_SQUARE]);
+  DECLARE_ALIGNED(32, trans_low_t, qcoeff_u[MAX_SB_SQUARE]);
+  DECLARE_ALIGNED(32, trans_low_t, qcoeff_v[MAX_SB_SQUARE]);
+
   // Notes transform blocks where no coefficents are coded.
   // Set during mode selection. Read during block encoding.
   uint8_t zcoeff_blk[TX_SIZES][256];

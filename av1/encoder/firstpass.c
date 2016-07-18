@@ -72,11 +72,6 @@
 unsigned int arf_count = 0;
 #endif
 
-DECLARE_ALIGNED(32, tran_low_t, coeff_buf[MAX_MB_PLANE][64*64]);
-DECLARE_ALIGNED(32, tran_low_t, qcoeff_buf[MAX_MB_PLANE][64*64]);
-DECLARE_ALIGNED(32, tran_low_t, dqcoeff_buf[MAX_MB_PLANE][64*64]);
-DECLARE_ALIGNED(32, uint16_t, eobs_buf[MAX_MB_PLANE][64*64]);
-
 // Resets the first pass file to the given position using a relative seek from
 // the current position.
 static void reset_fpf_position(TWO_PASS *p, const FIRSTPASS_STATS *position) {
@@ -524,10 +519,14 @@ void av1_first_pass(AV1_COMP *cpi, const struct lookahead_entry *source) {
   av1_frame_init_quantizer(cpi);
 
   for (i = 0; i < MAX_MB_PLANE; ++i) {
-    p[i].coeff = coeff_buf[i];
-    p[i].qcoeff = qcoeff_buf[i];
-    pd[i].dqcoeff = dqcoeff_buf[i];
-    p[i].eobs = eobs_buf[i];
+    CHECK_MEM_ERROR(cm, p[i].coeff,
+                    aom_memalign(32, MAX_SB_SQUARE * sizeof(*p[i].coeff)));
+    CHECK_MEM_ERROR(cm, p[i].qcoeff,
+                    aom_memalign(32, MAX_SB_SQUARE * sizeof(*p[i].qcoeff)));
+    CHECK_MEM_ERROR(cm, pd[i].dqcoeff,
+                    aom_memalign(32, MAX_SB_SQUARE * sizeof(*pd[i].dqcoeff)));
+    CHECK_MEM_ERROR(cm, p[i].eobs,
+                    aom_memalign(32, MAX_SB_SQUARE * sizeof(*p[i].eobs)));
   }
 
   av1_init_mv_probs(cm);
