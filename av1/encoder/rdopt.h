@@ -61,7 +61,7 @@ void av1_rd_pick_inter_mode_sub8x8(const struct AV1_COMP *cpi,
                                    int64_t best_rd_so_far);
 
 void av1_rd_encode_block(const AV1_COMP *const cpi, ThreadData *const td, MACROBLOCK *const x,
-                         TOKENEXTRA **t, int mi_row,
+                         int mi_row,
                          int mi_col, BLOCK_SIZE bsize, RD_COST *rd_cost);
 
 #ifdef __cplusplus

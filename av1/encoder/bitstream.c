@@ -811,19 +811,23 @@ static void write_modes_sb(AV1_COMP *cpi, const TileInfo *const tile,
   } else {
     switch (partition) {
       case PARTITION_NONE:
+        printf("PARTITION_NONE\n");
         write_modes_b(cpi, tile, w, tok, tok_end, mi_row, mi_col);
         break;
       case PARTITION_HORZ:
+        printf("PARTITION_HORZ\n");
         write_modes_b(cpi, tile, w, tok, tok_end, mi_row, mi_col);
         if (mi_row + bs < cm->mi_rows)
           write_modes_b(cpi, tile, w, tok, tok_end, mi_row + bs, mi_col);
         break;
       case PARTITION_VERT:
+        printf("PARTITION_VERT\n");
         write_modes_b(cpi, tile, w, tok, tok_end, mi_row, mi_col);
         if (mi_col + bs < cm->mi_cols)
           write_modes_b(cpi, tile, w, tok, tok_end, mi_row, mi_col + bs);
         break;
       case PARTITION_SPLIT:
+        printf("PARTITION_SPLIT\n");
         write_modes_sb(cpi, tile, w, tok, tok_end, mi_row, mi_col, subsize);
         write_modes_sb(cpi, tile, w, tok, tok_end, mi_row, mi_col + bs,
                        subsize);

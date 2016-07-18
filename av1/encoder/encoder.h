@@ -276,11 +276,6 @@ typedef struct RDContext {
   MODE_INFO *best_mi_ptrs[MAX_SB_SQUARE / 8];
   MB_MODE_INFO_EXT best_mbmi_ext;
 
-  RD_COUNTS best_rd_counts;
-  FRAME_COUNTS best_frame_counts;
-  TOKENEXTRA best_tokens[(MAX_SB_SQUARE + 64) * 3];
-  int num_tokens;
-  
   ENTROPY_CONTEXT a[16 * MAX_MB_PLANE];
   ENTROPY_CONTEXT l[16 * MAX_MB_PLANE];
   PARTITION_CONTEXT sa[8];
