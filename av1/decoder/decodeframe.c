@@ -431,17 +431,6 @@ static INLINE void dec_reset_skip_context(MACROBLOCKD *xd) {
   }
 }
 
-static void set_plane_n4(MACROBLOCKD *const xd, int bw, int bh, int bwl,
-                         int bhl) {
-  int i;
-  for (i = 0; i < MAX_MB_PLANE; i++) {
-    xd->plane[i].n4_w = (bw << 1) >> xd->plane[i].subsampling_x;
-    xd->plane[i].n4_h = (bh << 1) >> xd->plane[i].subsampling_y;
-    xd->plane[i].n4_wl = bwl - xd->plane[i].subsampling_x;
-    xd->plane[i].n4_hl = bhl - xd->plane[i].subsampling_y;
-  }
-}
-
 static MB_MODE_INFO *set_offsets(AV1_COMMON *const cm, MACROBLOCKD *const xd,
                                  BLOCK_SIZE bsize, int mi_row, int mi_col,
                                  int bw, int bh, int x_mis, int y_mis, int bwl,
@@ -456,12 +445,9 @@ static MB_MODE_INFO *set_offsets(AV1_COMMON *const cm, MACROBLOCKD *const xd,
   // passing bsize from decode_partition().
   xd->mi[0]->mbmi.sb_type = bsize;
   for (y = 0; y < y_mis; ++y)
-    for (x = !y; x < x_mis; ++x) {
-      xd->mi[y * cm->mi_stride + x] = xd->mi[0];
-    }
+    for (x = !y; x < x_mis; ++x) xd->mi[y * cm->mi_stride + x] = xd->mi[0];
 
   set_plane_n4(xd, bw, bh, bwl, bhl);
-
   set_skip_context(xd, mi_row, mi_col);
 
   // Distance of Mb to the various image edges. These are specified to 8th pel
@@ -817,7 +803,26 @@ static void setup_loopfilter(struct loopfilter *lf,
 
 #if CONFIG_CLPF
 static void setup_clpf(AV1_COMMON *cm, struct aom_read_bit_buffer *rb) {
-  cm->clpf = aom_rb_read_literal(rb, 1);
+  cm->clpf_blocks = 0;
+  cm->clpf_strength = aom_rb_read_literal(rb, 2);
+  if (cm->clpf_strength) {
+    cm->clpf_size = aom_rb_read_literal(rb, 2);
+    if (cm->clpf_size) {
+      int i;
+      cm->clpf_numblocks = aom_rb_read_literal(rb, av1_clpf_maxbits(cm));
+      CHECK_MEM_ERROR(cm, cm->clpf_blocks, aom_malloc(cm->clpf_numblocks));
+      for (i = 0; i < cm->clpf_numblocks; i++) {
+        cm->clpf_blocks[i] = aom_rb_read_literal(rb, 1);
+      }
+    }
+  }
+}
+
+static int clpf_bit(int k, int l, const YV12_BUFFER_CONFIG *rec,
+                    const YV12_BUFFER_CONFIG *org, const AV1_COMMON *cm,
+                    int block_size, int w, int h, unsigned int strength,
+                    unsigned int fb_size_log2, uint8_t *bit) {
+  return *bit;
 }
 #endif
 
@@ -2236,8 +2241,22 @@ void av1_decode_frame(AV1Decoder *pbi, const uint8_t *data,
   }
 
 #if CONFIG_CLPF
-  if (cm->clpf && !cm->skip_loop_filter)
-    av1_clpf_frame(&pbi->cur_buf->buf, cm, &pbi->mb);
+  if (cm->clpf_strength && !cm->skip_loop_filter) {
+    YV12_BUFFER_CONFIG dst;  // Buffer for the result
+
+    dst = pbi->cur_buf->buf;
+    CHECK_MEM_ERROR(cm, dst.y_buffer, aom_malloc(dst.y_stride * dst.y_height));
+
+    av1_clpf_frame(&dst, &pbi->cur_buf->buf, 0, cm, !!cm->clpf_size,
+                   cm->clpf_strength + (cm->clpf_strength == 3),
+                   4 + cm->clpf_size, cm->clpf_blocks, clpf_bit);
+
+    // Copy result
+    memcpy(pbi->cur_buf->buf.y_buffer, dst.y_buffer,
+           dst.y_height * dst.y_stride);
+    aom_free(dst.y_buffer);
+  }
+  if (cm->clpf_blocks) aom_free(cm->clpf_blocks);
 #endif
 #if CONFIG_DERING
   if (cm->dering_level && !cm->skip_loop_filter) {
