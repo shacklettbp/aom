@@ -158,6 +158,17 @@ static BLOCK_SIZE get_rd_var_based_fixed_partition(AV1_COMP *cpi, MACROBLOCK *x,
     return BLOCK_8X8;
 }
 
+static inline void set_qcoeff_buf_offset(MACROBLOCK *const x, int idx, BLOCK_SIZE bsize)
+{
+  int i;
+  const trans_low_t *qcoeff_pbuf[MAX_MB_PLANE] = { x->qcoeff_y, x->qcoeff_u, x->qcoeff_v };
+  for (i = 0; i < MAX_MB_PLANE; i++) {
+    BLOCK_SIZE plane_bsize = get_plane_block_size(&x->e_mbd.planes[i], bsize);
+    struct macroblock_plane *p = &x->planes[i];
+    p->qcoeff = qcoeff_pbuf[i] + idx * (1 << num_pels_log2_lookup[plane_bsize]);
+  }
+}
+
 // Lighter version of set_offsets that only sets the mode info
 // pointers.
 static INLINE void set_mode_info_offsets(const AV1_COMP *const cpi,
@@ -200,7 +211,6 @@ static void set_offsets(const AV1_COMP *const cpi, const TileInfo *const tile,
   const int bwl = b_width_log2_lookup[AOMMAX(bsize, BLOCK_8X8)];
   const int bhl = b_height_log2_lookup[AOMMAX(bsize, BLOCK_8X8)];
   const struct segmentation *const seg = &cm->seg;
-  const trans_low_t *qcoeff_pbuf[MAX_MB_PLANE] = { x->qcoeff_y, x->qcoeff_u, x->qcoeff_v };
 
   set_skip_context(xd, mi_row, mi_col);
 
@@ -210,11 +220,6 @@ static void set_offsets(const AV1_COMP *const cpi, const TileInfo *const tile,
 
   // Set up destination pointers.
   av1_setup_dst_planes(xd->plane, get_frame_new_buffer(cm), mi_row, mi_col);
-
-  for (i = 0; i < MAX_MB_PLANE; ++i) {
-    struct macroblock_plane *const p = &x->planes[i];
-    p->qcoeff[i] = qcoeff_pbuf[i] + MI_SIZE * (mi_row - tile->mi_row_start) * MAX_SB_SIZE + (mi_col - tile->mi_col_start);
-  }
 
   // Set up limit values for MV components.
   // Mv beyond the range do not produce new/different prediction block.
@@ -1275,7 +1280,7 @@ void save_rd_results(const AV1_COMP *const cpi, RDContext *const rdctx, ThreadDa
       src += pd->dst.stride;
     }
 
-
+    p->qcoeff[i] = qcoeff_pbuf[i] + MI_SIZE * (mi_row - tile->mi_row_start) * mi_width + (mi_col - tile->mi_col_start);
   }
 
   // Save the MODE_INFO for the entire region covered by bsize. This ensures
