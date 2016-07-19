@@ -1388,9 +1388,6 @@ static void rd_block_pick_mode_encode(const AV1_COMP *const cpi, ThreadData *con
   save_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
   rd_pick_sb_modes(cpi, tile_data, x, mi_row, mi_col, rd_cost, bsize, best_rd);
 
-  printf("PREPRE EOB\n%d\n", x->plane[0].eobs[0]);
-  printf("PREPRE QC[0]\n%d\n", x->plane[0].qcoeff[0]);
-
   restore_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
 
   if (rd_cost->rdcost == INT64_MAX)
@@ -2212,9 +2209,6 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
         x->start_interp_filter = rdctx->best_mi[0].mbmi.interp_filter;
       rd_block_pick_mode_encode(cpi, td, tile_data, x, mi_row, mi_col, &sum_rdc, subsize,
                                 best_rdc.rdcost);
-      printf("PART\n%d\n", part_idx);
-      printf("PRE EOB\n%d\n", x->plane[0].eobs[0]);
-      printf("PRE QC[0]\n%d\n", x->plane[0].qcoeff[0]);
       if (sum_rdc.rate == INT_MAX) sum_rdc.rdcost = INT64_MAX;
       reached_last_index = 1;
     } else {
@@ -2566,37 +2560,37 @@ static void tokenize_superblock(const AV1_COMP *cpi, TileDataEnc *tile_data, Thr
   save_global_qcoeff_offsets(x, qcoeff_orig, eobs_orig);
   set_global_qcoeff_offsets(x, part_idx, bsize);
 
-  if (bsize == BLOCK_8X8) {
-    tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
-  } else {
-    switch (partition) {
-      case PARTITION_NONE:
+  switch (partition) {
+    case PARTITION_NONE:
+      tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
+      break;
+    case PARTITION_HORZ:
+      tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
+      if (mi_row + bs < cm->mi_rows) {
+        set_qcoeff_bufs(x, 1, subsize);
+        tokenize_block(cpi, tile_data, td, t, x, mi_row + bs, mi_col, subsize);
+      }
+      break;
+    case PARTITION_VERT:
+      tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
+      if (mi_col + bs < cm->mi_cols) {
+        set_qcoeff_bufs(x, 1, subsize);
+        tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col + bs, subsize);
+      }
+      break;
+    case PARTITION_SPLIT:
+      if (bsize == BLOCK_8X8) {
         tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
-        break;
-      case PARTITION_HORZ:
-        tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
-        if (mi_row + bs < cm->mi_rows) {
-          set_qcoeff_bufs(x, 1, subsize);
-          tokenize_block(cpi, tile_data, td, t, x, mi_row + bs, mi_col, subsize);
-        }
-        break;
-      case PARTITION_VERT:
-        tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
-        if (mi_col + bs < cm->mi_cols) {
-          set_qcoeff_bufs(x, 1, subsize);
-          tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col + bs, subsize);
-        }
-        break;
-      case PARTITION_SPLIT:
+      } else {
         tokenize_superblock(cpi, tile_data, td, t, 0, mi_row, mi_col, subsize);
         tokenize_superblock(cpi, tile_data, td, t, 1, mi_row, mi_col + bs, subsize); 
         tokenize_superblock(cpi, tile_data, td, t, 2, mi_row + bs, mi_col, subsize); 
         tokenize_superblock(cpi, tile_data, td, t, 3, mi_row + bs, mi_col + bs, subsize); 
-        break;
-      default: assert(0);
-    }
+      }
+      break;
+    default: assert(0);
   }
-
+  
   restore_global_qcoeff_offsets(x, qcoeff_orig, eobs_orig);
 
   if (partition != PARTITION_SPLIT || bsize == BLOCK_8X8)
