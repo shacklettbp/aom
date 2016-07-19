@@ -1390,7 +1390,7 @@ static void rd_block_pick_mode_encode(const AV1_COMP *const cpi, ThreadData *con
 
   restore_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
 
-  if (rd_cost->rdcost == INT64_MAX)
+  if (rd_cost->rate == INT_MAX)
     return;
 
   // Set all the mi grid pointers for this block before doing a full encode
@@ -1398,7 +1398,7 @@ static void rd_block_pick_mode_encode(const AV1_COMP *const cpi, ThreadData *con
   
   av1_rd_encode_block(cpi, td, x, mi_row, mi_col, bsize, rd_cost);
 
-  if (rd_cost->rdcost >= best_rd) {
+  if (rd_cost->rate == INT_MAX) {
     av1_rd_cost_reset(rd_cost);
     return;
   }
@@ -2100,8 +2100,10 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   }
 #endif
 
+  printf("PICKINFO\n%d %d %d %d\n", mi_row, mi_col, bsize, part_idx);
+
   do_square_split = 1;
-  partition_none_allowed = 0;
+  partition_none_allowed = 1;
   partition_vert_allowed = 0;
   partition_horz_allowed = 0;
 
@@ -2212,6 +2214,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
       if (sum_rdc.rate == INT_MAX) sum_rdc.rdcost = INT64_MAX;
       reached_last_index = 1;
     } else {
+      printf("START SPLIT\n");
       int idx;
       for (idx = 0; idx < 4 && sum_rdc.rdcost < best_rdc.rdcost; ++idx) {
         const int x_idx = (idx & 1) * mi_step;
@@ -2227,6 +2230,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
             &this_rdc, best_rdc.rdcost - sum_rdc.rdcost);
 
         if (this_rdc.rate == INT_MAX) {
+          printf("sum early terminate %d\n", best_rdc.rdcost - sum_rdc.rdcost);
           sum_rdc.rdcost = INT64_MAX;
           break;
         } else {
@@ -2236,6 +2240,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
         }
       }
       reached_last_index = (idx == 4);
+      printf("END SPLIT\n");
     }
 
     if (reached_last_index && sum_rdc.rdcost < best_rdc.rdcost) {
@@ -2248,6 +2253,8 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
         best_rdc = sum_rdc;
 
         save_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
+
+        printf("PARTITION_SPLIT better\n");
       }
     } else if (cpi->sf.less_rectangular_check) {
       // skip rectangular partition test when larger block size
@@ -2419,8 +2426,6 @@ static void tokenize_block(const AV1_COMP *const cpi, TileDataEnc *tile_data, Th
   const int x_mis = AOMMIN(mi_width, cm->mi_cols - mi_col);
   const int y_mis = AOMMIN(mi_height, cm->mi_rows - mi_row);
   MV_REF *const frame_mvs = cm->cur_frame->mvs + mi_row * cm->mi_cols + mi_col;
-
-  printf("---block---\n");
 
   set_offsets(cpi, tile_info, x, mi_row, mi_col, bsize);
   mi = xd->mi[0];
