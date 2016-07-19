@@ -430,6 +430,7 @@ static void tokenize_b(int plane, int block, int blk_row, int blk_col,
   printf("EC\n%d\n", pt);
   printf("EOB\n%d\n", eob);
   printf("QC[0]\n%d\n", qcoeff[0]);
+  printf("MBMI\n%d %d %d\n", mbmi->sb_type, mbmi->mode, mbmi->tx_size);
   scan = so->scan;
   nb = so->neighbors;
   c = 0;

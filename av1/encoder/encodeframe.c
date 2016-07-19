@@ -2210,6 +2210,8 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
         x->start_interp_filter = rdctx->best_mi[0].mbmi.interp_filter;
       rd_block_pick_mode_encode(cpi, td, tile_data, x, mi_row, mi_col, &sum_rdc, subsize,
                                 best_rdc.rdcost);
+      printf("PRE EOB\n%d\n", x->plane[0].eobs[0]);
+      printf("PRE QC[0]\n%d\n", x->plane[0].qcoeff[0]);
       if (sum_rdc.rate == INT_MAX) sum_rdc.rdcost = INT64_MAX;
       reached_last_index = 1;
     } else {
@@ -2350,8 +2352,6 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
     }
   }
 
-  restore_global_qcoeff_offsets(x, qcoeff_orig, eobs_orig);
-
   // TODO(jbb): This code added so that we avoid static analysis
   // warning related to the fact that best_rd isn't used after this
   // point.  This code should be refactored so that the duplicate
@@ -2362,6 +2362,8 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   if (best_rdc.rate < INT_MAX && best_rdc.dist < INT64_MAX) {
     restore_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
   }
+
+  restore_global_qcoeff_offsets(x, qcoeff_orig, eobs_orig);
 
   if (bsize == BLOCK_64X64) {
     assert(best_rdc.rate < INT_MAX);
