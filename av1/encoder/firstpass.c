@@ -1038,6 +1038,13 @@ void av1_first_pass(AV1_COMP *cpi, const struct lookahead_entry *source) {
 #endif  // CONFIG_EXT_REFS
   }
 
+  for (i = 0; i < MAX_MB_PLANE; ++i) {
+    aom_free(p[i].coeff);
+    aom_free(p[i].qcoeff);
+    aom_free(pd[i].dqcoeff);
+    aom_free(p[i].eobs);
+  }
+
   // Use this to see what the first pass reconstruction looks like.
   if (0) {
     char filename[512];

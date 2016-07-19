@@ -277,6 +277,7 @@ typedef struct RDContext {
   MB_MODE_INFO_EXT best_mbmi_ext;
 
   tran_low_t best_qcoeff[MAX_MB_PLANE][MAX_SB_SQUARE];
+  uint16_t best_eobs[MAX_MB_PLANE][MAX_SB_SQUARE / 16];
 
   ENTROPY_CONTEXT a[16 * MAX_MB_PLANE];
   ENTROPY_CONTEXT l[16 * MAX_MB_PLANE];

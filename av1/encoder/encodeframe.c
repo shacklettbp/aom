@@ -158,18 +158,43 @@ static BLOCK_SIZE get_rd_var_based_fixed_partition(AV1_COMP *cpi, MACROBLOCK *x,
     return BLOCK_8X8;
 }
 
-static int get_qcoeff_offset(int idx, BLOCK_SIZE bsize) {
-  return idx * (1 << num_pels_log2_lookup[bsize]);
+static unsigned int get_coeff_offset(int idx, BLOCK_SIZE bsize, int log2_offset) {
+  return idx * (1 << (num_pels_log2_lookup[bsize] - log2_offset));
 }
 
-static void set_qcoeff_planes_buf(MACROBLOCK *const x, int idx, BLOCK_SIZE bsize)
+static void save_global_qcoeff_offsets(MACROBLOCK *const x, tran_low_t **qcoeff_backup, uint16_t **eobs_backup) {
+  int i;
+  for (i = 0; i < MAX_MB_PLANE; i++) {
+    qcoeff_backup[i] = x->qcoeff_pbuf[i];
+    eobs_backup[i] = x->eobs_pbuf[i];
+  }
+}
+
+static void restore_global_qcoeff_offsets(MACROBLOCK *const x, tran_low_t **qcoeff_backup, uint16_t **eobs_backup) {
+  int i;
+  for (i = 0; i < MAX_MB_PLANE; i++) {
+    x->qcoeff_pbuf[i] = qcoeff_backup[i];
+    x->eobs_pbuf[i] = eobs_backup[i];
+  }
+}
+
+static void set_global_qcoeff_offsets(MACROBLOCK *const x, int idx, BLOCK_SIZE bsize) {
+  int i;
+  for (i = 0; i < MAX_MB_PLANE; i++) {
+    BLOCK_SIZE plane_bsize = get_plane_block_size(bsize, &x->e_mbd.plane[i]);
+    x->qcoeff_pbuf[i] += get_coeff_offset(idx, plane_bsize, 0);
+    x->eobs_pbuf[i] += get_coeff_offset(idx, plane_bsize, 4);
+  }
+}
+
+static void set_qcoeff_bufs(MACROBLOCK *const x, int idx, BLOCK_SIZE bsize)
 {
   int i;
-  tran_low_t *qcoeff_pbuf[MAX_MB_PLANE] = { x->qcoeff_y, x->qcoeff_u, x->qcoeff_v };
   for (i = 0; i < MAX_MB_PLANE; i++) {
     struct macroblock_plane *p = &x->plane[i];
     BLOCK_SIZE plane_bsize = get_plane_block_size(bsize, &x->e_mbd.plane[i]);
-    p->qcoeff = qcoeff_pbuf[i] + get_qcoeff_offset(idx, plane_bsize);
+    p->qcoeff = x->qcoeff_pbuf[i] + get_coeff_offset(idx, plane_bsize, 0);
+    p->eobs = x->eobs_pbuf[i] + get_coeff_offset(idx, plane_bsize, 4);
   }
 }
 
@@ -1269,7 +1294,7 @@ void save_rd_results(const AV1_COMP *const cpi, RDContext *const rdctx, ThreadDa
   // setup_dst_planes, (here and set_offsets), work out way to avoid this
   // Set up destination pointers. 
   av1_setup_dst_planes(xd->plane, get_frame_new_buffer(cm), mi_row, mi_col);
-  set_qcoeff_planes_buf(x, 0, bsize);
+  set_qcoeff_bufs(x, 0, bsize);
 
   for (i = 0; i < MAX_MB_PLANE; i++) {
     const struct macroblock_plane *p = &x->plane[i];
@@ -1286,7 +1311,8 @@ void save_rd_results(const AV1_COMP *const cpi, RDContext *const rdctx, ThreadDa
       src += pd->dst.stride;
     }
 
-    memcpy(p->qcoeff, rdctx->best_qcoeff[i], 1 << num_pels_log2_lookup[bsize]);
+    memcpy(rdctx->best_qcoeff[i], p->qcoeff, (1 << num_pels_log2_lookup[bs]) * sizeof(*p->qcoeff));
+    memcpy(rdctx->best_eobs[i], p->eobs, (1 << (num_pels_log2_lookup[bs] - 4)) * sizeof(*p->eobs));
   }
 
   // Save the MODE_INFO for the entire region covered by bsize. This ensures
@@ -1317,7 +1343,7 @@ void restore_rd_results(const AV1_COMP *const cpi, const RDContext *const rdctx,
   MB_MODE_INFO_EXT *mbmi_ext = cpi->mbmi_ext_base + mi_row * cm->mi_cols + mi_col;
 
   av1_setup_dst_planes(xd->plane, get_frame_new_buffer(cm), mi_row, mi_col);
-  set_qcoeff_planes_buf(x, 0, bsize);
+  set_qcoeff_bufs(x, 0, bsize);
 
   for (i = 0; i < MAX_MB_PLANE; i++) {
     const struct macroblock_plane *p = &x->plane[i];
@@ -1334,7 +1360,8 @@ void restore_rd_results(const AV1_COMP *const cpi, const RDContext *const rdctx,
       dst += pd->dst.stride;
     }
 
-    memcpy(p->qcoeff, rdctx->best_qcoeff[i], 1 << num_pels_log2_lookup[bsize]);
+    memcpy(p->qcoeff, rdctx->best_qcoeff[i], (1 << num_pels_log2_lookup[bs]) * sizeof(*p->qcoeff));
+    memcpy(p->eobs, rdctx->best_eobs[i], (1 << (num_pels_log2_lookup[bs] - 4)) * sizeof(*p->eobs));
   } 
 
   // Restore the coding context of the MB to that that was in place
@@ -1356,7 +1383,11 @@ void restore_rd_results(const AV1_COMP *const cpi, const RDContext *const rdctx,
 static void rd_block_pick_mode_encode(const AV1_COMP *const cpi, ThreadData *const td, TileDataEnc *const tile_data,
                                       MACROBLOCK *const x, int mi_row, int mi_col,
                                       RD_COST *rd_cost, BLOCK_SIZE bsize, int64_t best_rd) {
+  ENTROPY_CONTEXT l[16 * MAX_MB_PLANE], a[16 * MAX_MB_PLANE];
+  PARTITION_CONTEXT sl[8], sa[8];
+  save_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
   rd_pick_sb_modes(cpi, tile_data, x, mi_row, mi_col, rd_cost, bsize, best_rd);
+  restore_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
 
   if (rd_cost->rdcost == INT64_MAX)
     return;
@@ -1922,7 +1953,7 @@ static INLINE int get_motion_inconsistency(MOTION_DIRECTION this_mv,
 // results, for encoding speed-up.
 static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
                               TileDataEnc *tile_data,
-                              int depth, int part_index,
+                              int depth, int part_idx,
                               int mi_row, int mi_col, BLOCK_SIZE bsize,
                               RD_COST *rd_cost, int64_t best_rd) {
   const AV1_COMMON *const cm = &cpi->common;
@@ -1931,6 +1962,8 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   MACROBLOCK *const x = &td->mb;
   const MACROBLOCKD *const xd = &x->e_mbd;
   const int mi_step = num_8x8_blocks_wide_lookup[bsize] / 2;
+  tran_low_t *qcoeff_orig[MAX_MB_PLANE];
+  uint16_t *eobs_orig[MAX_MB_PLANE];
   ENTROPY_CONTEXT l[16 * MAX_MB_PLANE], a[16 * MAX_MB_PLANE];
   PARTITION_CONTEXT sl[8], sa[8];
   BLOCK_SIZE subsize;
@@ -1970,6 +2003,9 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   av1_rd_cost_reset(&best_rdc);
   best_rdc.rdcost = best_rd;
 
+  save_global_qcoeff_offsets(x, qcoeff_orig, eobs_orig);
+  set_global_qcoeff_offsets(x, part_idx, bsize);
+
   set_offsets(cpi, tile_info, x, mi_row, mi_col, bsize);
 
   save_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
@@ -1981,9 +2017,8 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
     x->mb_energy = av1_block_energy(cpi, x, bsize);
 
   if (cpi->sf.cb_partition_search && bsize == BLOCK_16X16) {
-    // FIXME
     const int cb_partition_search_ctrl =
-        ((part_index == 0 || part_index == 3) +
+        ((part_idx == 0 || part_idx == 3) +
         get_chessboard_index(cm->current_video_frame)) & 0x1;
 
     if (cb_partition_search_ctrl && bsize > min_size && bsize < max_size)
@@ -2005,11 +2040,6 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
     partition_horz_allowed &= force_horz_split;
     partition_vert_allowed &= force_vert_split;
   }
-
-  do_square_split = 0;
-  partition_horz_allowed = 1;
-  partition_vert_allowed = 1;
-  partition_none_allowed = 1;
 
   save_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
 
@@ -2070,6 +2100,11 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
     }
   }
 #endif
+
+  do_square_split = 1;
+  partition_none_allowed = 0;
+  partition_vert_allowed = 0;
+  partition_horz_allowed = 0;
 
   // PARTITION_NONE
   if (partition_none_allowed) {
@@ -2232,7 +2267,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
         partition_none_allowed)
       x->start_interp_filter = rdctx->best_mi[0].mbmi.interp_filter;
 
-    set_qcoeff_planes_buf(x, 0, subsize);
+    set_qcoeff_bufs(x, 0, subsize);
     rd_block_pick_mode_encode(cpi, td, tile_data, x, mi_row, mi_col, &sum_rdc, subsize,
                               best_rdc.rdcost);
 
@@ -2244,7 +2279,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
           partition_none_allowed)
         x->start_interp_filter = rdctx->best_mi[0].mbmi.interp_filter;
 
-      set_qcoeff_planes_buf(x, 1, subsize);
+      set_qcoeff_bufs(x, 1, subsize);
       rd_block_pick_mode_encode(cpi, td, tile_data, x, mi_row + mi_step, mi_col, &this_rdc,
                        subsize,
                        best_rdc.rdcost - sum_rdc.rdcost);
@@ -2280,7 +2315,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
         partition_none_allowed)
       x->start_interp_filter = rdctx->best_mi[0].mbmi.interp_filter;
 
-    set_qcoeff_planes_buf(x, 0, subsize);
+    set_qcoeff_bufs(x, 0, subsize);
     rd_block_pick_mode_encode(cpi, td, tile_data, x, mi_row, mi_col, &sum_rdc, subsize,
                               best_rdc.rdcost);
     if (sum_rdc.rdcost < best_rdc.rdcost && !force_vert_split &&
@@ -2290,7 +2325,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
           partition_none_allowed)
         x->start_interp_filter = rdctx->best_mi[0].mbmi.interp_filter;
 
-      set_qcoeff_planes_buf(x, 1, subsize);
+      set_qcoeff_bufs(x, 1, subsize);
       rd_block_pick_mode_encode(cpi, td, tile_data, x, mi_row, mi_col + mi_step, &this_rdc,
                        subsize,
                        best_rdc.rdcost - sum_rdc.rdcost);
@@ -2314,6 +2349,8 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
       }
     }
   }
+
+  restore_global_qcoeff_offsets(x, qcoeff_orig, eobs_orig);
 
   // TODO(jbb): This code added so that we avoid static analysis
   // warning related to the fact that best_rd isn't used after this
@@ -2384,8 +2421,6 @@ static void tokenize_block(const AV1_COMP *const cpi, TileDataEnc *tile_data, Th
   const int y_mis = AOMMIN(mi_height, cm->mi_rows - mi_row);
   MV_REF *const frame_mvs = cm->cur_frame->mvs + mi_row * cm->mi_cols + mi_col;
 
-
-  // FIXME, get rid of this
   set_offsets(cpi, tile_info, x, mi_row, mi_col, bsize);
   mi = xd->mi[0];
   mbmi = &mi->mbmi;
@@ -2495,7 +2530,7 @@ static void tokenize_block(const AV1_COMP *const cpi, TileDataEnc *tile_data, Th
   }
 }
 
-static void tokenize_superblock(const AV1_COMP *cpi, TileDataEnc *tile_data, ThreadData *td, TOKENEXTRA **t, int mi_row, int mi_col, BLOCK_SIZE bsize) {
+static void tokenize_superblock(const AV1_COMP *cpi, TileDataEnc *tile_data, ThreadData *td, TOKENEXTRA **t, int part_idx, int mi_row, int mi_col, BLOCK_SIZE bsize) {
   const AV1_COMMON *const cm = &cpi->common;
   MACROBLOCK *const x = &td->mb;
   MACROBLOCKD *const xd = &x->e_mbd;
@@ -2506,6 +2541,8 @@ static void tokenize_superblock(const AV1_COMP *cpi, TileDataEnc *tile_data, Thr
   PARTITION_TYPE partition;
   BLOCK_SIZE subsize;
   const MODE_INFO *mi = NULL;
+  tran_low_t *qcoeff_orig[MAX_MB_PLANE];
+  uint16_t *eobs_orig[MAX_MB_PLANE];
 
   if (mi_row >= cm->mi_rows || mi_col >= cm->mi_cols) return;
 
@@ -2513,12 +2550,14 @@ static void tokenize_superblock(const AV1_COMP *cpi, TileDataEnc *tile_data, Thr
 
   partition = partition_lookup[bsl][mi->mbmi.sb_type];
   subsize = get_subsize(bsize, partition);
-  printf("%d\n", subsize);
 
   part_ctx = partition_plane_context(xd, mi_row, mi_col, bsize);
 
   partition = partition_lookup[bsl][subsize];
   td->counts->partition[part_ctx][partition]++;
+
+  save_global_qcoeff_offsets(x, qcoeff_orig, eobs_orig);
+  set_global_qcoeff_offsets(x, part_idx, bsize);
 
   if (bsize == BLOCK_8X8) {
     tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
@@ -2529,23 +2568,29 @@ static void tokenize_superblock(const AV1_COMP *cpi, TileDataEnc *tile_data, Thr
         break;
       case PARTITION_HORZ:
         tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
-        if (mi_row + bs < cm->mi_rows)
+        if (mi_row + bs < cm->mi_rows) {
+          set_qcoeff_bufs(x, 1, subsize);
           tokenize_block(cpi, tile_data, td, t, x, mi_row + bs, mi_col, subsize);
+        }
         break;
       case PARTITION_VERT:
         tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
-        if (mi_col + bs < cm->mi_cols)
+        if (mi_col + bs < cm->mi_cols) {
+          set_qcoeff_bufs(x, 1, subsize);
           tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col + bs, subsize);
+        }
         break;
       case PARTITION_SPLIT:
-        tokenize_superblock(cpi, tile_data, td, t, mi_row, mi_col, subsize);
-        tokenize_superblock(cpi, tile_data, td, t, mi_row, mi_col + bs, subsize); 
-        tokenize_superblock(cpi, tile_data, td, t, mi_row + bs, mi_col, subsize); 
-        tokenize_superblock(cpi, tile_data, td, t, mi_row + bs, mi_col + bs, subsize); 
+        tokenize_superblock(cpi, tile_data, td, t, 0, mi_row, mi_col, subsize);
+        tokenize_superblock(cpi, tile_data, td, t, 1, mi_row, mi_col + bs, subsize); 
+        tokenize_superblock(cpi, tile_data, td, t, 2, mi_row + bs, mi_col, subsize); 
+        tokenize_superblock(cpi, tile_data, td, t, 3, mi_row + bs, mi_col + bs, subsize); 
         break;
       default: assert(0);
     }
   }
+
+  restore_global_qcoeff_offsets(x, qcoeff_orig, eobs_orig);
 
   if (partition != PARTITION_SPLIT || bsize == BLOCK_8X8)
     update_partition_context(xd, mi_row, mi_col, subsize, bsize);
@@ -2578,8 +2623,6 @@ static void encode_rd_sb_row(AV1_COMP *cpi, ThreadData *td,
 
     const int idx_str = cm->mi_stride * mi_row + mi_col;
     MODE_INFO **mi = cm->mi_grid_visible + idx_str;
-
-    printf("---SB---\n");
 
     save_entropy_context(x, mi_row, mi_col, a, l, sa, sl, BLOCK_64X64);
 
@@ -2626,7 +2669,7 @@ static void encode_rd_sb_row(AV1_COMP *cpi, ThreadData *td,
     // Tokenize the superblock
     // FIXME why is this entropy crap necessary??
     restore_entropy_context(x, mi_row, mi_col, a, l, sa, sl, BLOCK_64X64);
-    tokenize_superblock(cpi, tile_data, td, tp, mi_row, mi_col, BLOCK_64X64);
+    tokenize_superblock(cpi, tile_data, td, tp, 0, mi_row, mi_col, BLOCK_64X64);
   }
 }
 
@@ -2763,10 +2806,13 @@ void av1_encode_tile(AV1_COMP *cpi, ThreadData *td, int tile_row,
                   aom_memalign(32, MAX_SB_SQUARE * sizeof(*p[i].coeff)));
     CHECK_MEM_ERROR(cm, pd[i].dqcoeff,
                       aom_memalign(32, MAX_SB_SQUARE * sizeof(*pd[i].dqcoeff)));
-    CHECK_MEM_ERROR(cm, p[i].eobs,
-                    aom_memalign(32, MAX_SB_SQUARE * sizeof(*p[i].eobs)));
+
+    CHECK_MEM_ERROR(cm, x->qcoeff_pbuf[i],
+                      aom_memalign(32, MAX_SB_SQUARE * sizeof(*x->qcoeff_pbuf[i])));
+    CHECK_MEM_ERROR(cm, x->eobs_pbuf[i],
+                    aom_memalign(32, MAX_SB_SQUARE / 4 * sizeof(*x->eobs_pbuf[i])));
   }
-  set_qcoeff_planes_buf(x, 0, BLOCK_64X64);
+  set_qcoeff_bufs(x, 0, BLOCK_64X64);
 
   for (mi_row = tile_info->mi_row_start; mi_row < tile_info->mi_row_end;
        mi_row += MI_BLOCK_SIZE) {
@@ -2776,9 +2822,10 @@ void av1_encode_tile(AV1_COMP *cpi, ThreadData *td, int tile_row,
   // Cleanup pointers to per thread coefficient storage.
   for (i = 0; i < MAX_MB_PLANE; ++i) {
     aom_free(p[i].coeff);
-    aom_free(p[i].qcoeff);
     aom_free(pd[i].dqcoeff);
-    aom_free(p[i].eobs);
+
+    aom_free(x->qcoeff_pbuf[i]);
+    aom_free(x->eobs_pbuf[i]);
   }
 
   cpi->tok_count[tile_row][tile_col] =
