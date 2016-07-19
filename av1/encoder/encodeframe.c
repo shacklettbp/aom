@@ -2420,6 +2420,8 @@ static void tokenize_block(const AV1_COMP *const cpi, TileDataEnc *tile_data, Th
   const int y_mis = AOMMIN(mi_height, cm->mi_rows - mi_row);
   MV_REF *const frame_mvs = cm->cur_frame->mvs + mi_row * cm->mi_cols + mi_col;
 
+  printf("---block---\n");
+
   set_offsets(cpi, tile_info, x, mi_row, mi_col, bsize);
   mi = xd->mi[0];
   mbmi = &mi->mbmi;
@@ -2559,36 +2561,37 @@ static void tokenize_superblock(const AV1_COMP *cpi, TileDataEnc *tile_data, Thr
 
   save_global_qcoeff_offsets(x, qcoeff_orig, eobs_orig);
   set_global_qcoeff_offsets(x, part_idx, bsize);
+  set_qcoeff_bufs(x, 0, bsize);
 
-  switch (partition) {
-    case PARTITION_NONE:
-      tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
-      break;
-    case PARTITION_HORZ:
-      tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
-      if (mi_row + bs < cm->mi_rows) {
-        set_qcoeff_bufs(x, 1, subsize);
-        tokenize_block(cpi, tile_data, td, t, x, mi_row + bs, mi_col, subsize);
-      }
-      break;
-    case PARTITION_VERT:
-      tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
-      if (mi_col + bs < cm->mi_cols) {
-        set_qcoeff_bufs(x, 1, subsize);
-        tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col + bs, subsize);
-      }
-      break;
-    case PARTITION_SPLIT:
-      if (bsize == BLOCK_8X8) {
+  if (subsize < BLOCK_8X8) {
+    tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
+  } else {
+    switch (partition) {
+      case PARTITION_NONE:
         tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
-      } else {
+        break;
+      case PARTITION_HORZ:
+        tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
+        if (mi_row + bs < cm->mi_rows) {
+          set_qcoeff_bufs(x, 1, subsize);
+          tokenize_block(cpi, tile_data, td, t, x, mi_row + bs, mi_col, subsize);
+        }
+        break;
+      case PARTITION_VERT:
+        tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col, subsize);
+        if (mi_col + bs < cm->mi_cols) {
+          set_qcoeff_bufs(x, 1, subsize);
+          tokenize_block(cpi, tile_data, td, t, x, mi_row, mi_col + bs, subsize);
+        }
+        break;
+      case PARTITION_SPLIT:
         tokenize_superblock(cpi, tile_data, td, t, 0, mi_row, mi_col, subsize);
         tokenize_superblock(cpi, tile_data, td, t, 1, mi_row, mi_col + bs, subsize); 
         tokenize_superblock(cpi, tile_data, td, t, 2, mi_row + bs, mi_col, subsize); 
         tokenize_superblock(cpi, tile_data, td, t, 3, mi_row + bs, mi_col + bs, subsize); 
-      }
-      break;
-    default: assert(0);
+        break;
+      default: assert(0);
+    }
   }
   
   restore_global_qcoeff_offsets(x, qcoeff_orig, eobs_orig);
