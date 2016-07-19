@@ -1387,6 +1387,10 @@ static void rd_block_pick_mode_encode(const AV1_COMP *const cpi, ThreadData *con
   PARTITION_CONTEXT sl[8], sa[8];
   save_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
   rd_pick_sb_modes(cpi, tile_data, x, mi_row, mi_col, rd_cost, bsize, best_rd);
+
+  printf("PREPRE EOB\n%d\n", x->plane[0].eobs[0]);
+  printf("PREPRE QC[0]\n%d\n", x->plane[0].qcoeff[0]);
+
   restore_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
 
   if (rd_cost->rdcost == INT64_MAX)
@@ -1401,8 +1405,6 @@ static void rd_block_pick_mode_encode(const AV1_COMP *const cpi, ThreadData *con
     av1_rd_cost_reset(rd_cost);
     return;
   }
-
-  update_stats(&cpi->common, td);
 }
 
 // Check to see if the given partition size is allowed for a specified number
@@ -2210,6 +2212,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
         x->start_interp_filter = rdctx->best_mi[0].mbmi.interp_filter;
       rd_block_pick_mode_encode(cpi, td, tile_data, x, mi_row, mi_col, &sum_rdc, subsize,
                                 best_rdc.rdcost);
+      printf("PART\n%d\n", part_idx);
       printf("PRE EOB\n%d\n", x->plane[0].eobs[0]);
       printf("PRE QC[0]\n%d\n", x->plane[0].qcoeff[0]);
       if (sum_rdc.rate == INT_MAX) sum_rdc.rdcost = INT64_MAX;
@@ -2530,6 +2533,8 @@ static void tokenize_block(const AV1_COMP *const cpi, TileDataEnc *tile_data, Th
                                               [mbmi->mode]][mbmi->tx_type];
     }
   }
+
+  update_stats(&cpi->common, td);
 }
 
 static void tokenize_superblock(const AV1_COMP *cpi, TileDataEnc *tile_data, ThreadData *td, TOKENEXTRA **t, int part_idx, int mi_row, int mi_col, BLOCK_SIZE bsize) {
