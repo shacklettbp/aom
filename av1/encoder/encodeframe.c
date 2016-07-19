@@ -2103,7 +2103,9 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
 
   printf("PICKINFO\n%d %d %d %d\n", mi_row, mi_col, bsize, part_idx);
 
-  //do_square_split = 1;
+  do_square_split &= (bsize > BLOCK_8X8);
+  partition_vert_allowed &= (bsize > BLOCK_8X8);
+  partition_horz_allowed &= (bsize > BLOCK_8X8);
   //partition_none_allowed = 1;
   //partition_vert_allowed = 0;
   //partition_horz_allowed = 0;
@@ -2369,7 +2371,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   (void)best_rd;
   *rd_cost = best_rdc;
 
-  printf("RD: %d %d %ld %ld\n", bsize, best_rdc.rate, best_rdc.dist, best_rdc.rdcost);
+  printf("RD: %d %d %d %ld %ld\n", bsize, best_partition, best_rdc.rate, best_rdc.dist, best_rdc.rdcost);
 
   if (best_rdc.rate < INT_MAX && best_rdc.dist < INT64_MAX) {
     restore_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
@@ -2461,7 +2463,7 @@ static void tokenize_block(const AV1_COMP *const cpi, TileDataEnc *tile_data, Th
       ++mode_chosen_counts[kf_mode_index[mbmi->mode]];
     } else {
       // Note how often each mode chosen as best
-      ++mode_chosen_counts[ctx->best_mode_index];
+      ++mode_chosen_counts[x->mbmi_ext->mode_index];
     }
   }
 #endif
@@ -2485,9 +2487,9 @@ static void tokenize_block(const AV1_COMP *const cpi, TileDataEnc *tile_data, Th
 #endif  // CONFIG_MOTION_VAR
     }
 
-    td->rd_counts.comp_pred_diff[SINGLE_REFERENCE] += x->single_pred_diff;
-    td->rd_counts.comp_pred_diff[COMPOUND_REFERENCE] += x->comp_pred_diff;
-    td->rd_counts.comp_pred_diff[REFERENCE_MODE_SELECT] += x->hybrid_pred_diff;
+    td->rd_counts.comp_pred_diff[SINGLE_REFERENCE] += x->mbmi_ext->single_pred_diff;
+    td->rd_counts.comp_pred_diff[COMPOUND_REFERENCE] += x->mbmi_ext->comp_pred_diff;
+    td->rd_counts.comp_pred_diff[REFERENCE_MODE_SELECT] += x->mbmi_ext->hybrid_pred_diff;
   }
 
   for (h = 0; h < y_mis; ++h) {

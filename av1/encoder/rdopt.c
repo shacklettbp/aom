@@ -2780,10 +2780,10 @@ static void store_coding_stats(MACROBLOCK *x,
                                int64_t comp_pred_diff[REFERENCE_MODES],
                                int skippable) {
   x->inter_skippable = skippable;
-  x->mode_index = mode_index;
-  x->single_pred_diff = (int)comp_pred_diff[SINGLE_REFERENCE];
-  x->comp_pred_diff = (int)comp_pred_diff[COMPOUND_REFERENCE];
-  x->hybrid_pred_diff = (int)comp_pred_diff[REFERENCE_MODE_SELECT];
+  x->mbmi_ext->mode_index = mode_index;
+  x->mbmi_ext->single_pred_diff = (int)comp_pred_diff[SINGLE_REFERENCE];
+  x->mbmi_ext->comp_pred_diff = (int)comp_pred_diff[COMPOUND_REFERENCE];
+  x->mbmi_ext->hybrid_pred_diff = (int)comp_pred_diff[REFERENCE_MODE_SELECT];
 }
 
 static void setup_buffer_inter(

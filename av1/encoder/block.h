@@ -58,6 +58,12 @@ typedef struct {
   uint8_t ref_mv_count[MODE_CTX_REF_FRAMES];
   CANDIDATE_MV ref_mv_stack[MODE_CTX_REF_FRAMES][MAX_REF_MV_STACK_SIZE];
 #endif
+
+  // Used for stats and counts
+  int single_pred_diff;
+  int comp_pred_diff;
+  int hybrid_pred_diff;
+  int mode_index;
 } MB_MODE_INFO_EXT;
 
 typedef struct macroblock MACROBLOCK;
@@ -156,11 +162,7 @@ struct macroblock {
   // Used to store sub partition's choices.
   MV pred_mv[MAX_REF_FRAMES];
 
-  // Used for stats and counts
-  int single_pred_diff;
-  int comp_pred_diff;
-  int hybrid_pred_diff;
-  int mode_index;
+  // Used to determine if early breakout is possible
   int inter_skippable;
 
   // Which filter should be considered the best at the start of the RD search?
