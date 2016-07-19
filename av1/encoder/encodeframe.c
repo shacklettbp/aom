@@ -1959,7 +1959,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   TileInfo *const tile_info = &tile_data->tile_info;
   RDContext *const rdctx = &tile_data->rd_ctx[depth];
   MACROBLOCK *const x = &td->mb;
-  const MACROBLOCKD *const xd = &x->e_mbd;
+  MACROBLOCKD *const xd = &x->e_mbd;
   const int mi_step = num_8x8_blocks_wide_lookup[bsize] / 2;
   tran_low_t *qcoeff_orig[MAX_MB_PLANE];
   uint16_t *eobs_orig[MAX_MB_PLANE];
@@ -1968,9 +1968,10 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   BLOCK_SIZE subsize;
   RD_COST this_rdc, sum_rdc, best_rdc;
   MV predmv_backup[MAX_REF_FRAMES] = { 0 };
-  int bsize_at_least_8x8 = (bsize >= BLOCK_8X8);
+  const int bsize_at_least_8x8 = (bsize >= BLOCK_8X8);
   int do_square_split = bsize_at_least_8x8;
   int do_rectangular_split = 1;
+  PARTITION_TYPE best_partition = PARTITION_INVALID;
 
   // Override skipping rectangular partition operations for edge blocks
   const int force_horz_split = (mi_row + mi_step >= cm->mi_rows);
@@ -2102,10 +2103,10 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
 
   printf("PICKINFO\n%d %d %d %d\n", mi_row, mi_col, bsize, part_idx);
 
-  do_square_split = 1;
-  partition_none_allowed = 1;
-  partition_vert_allowed = 0;
-  partition_horz_allowed = 0;
+  //do_square_split = 1;
+  //partition_none_allowed = 1;
+  //partition_vert_allowed = 0;
+  //partition_horz_allowed = 0;
 
   // PARTITION_NONE
   if (partition_none_allowed) {
@@ -2130,6 +2131,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
             num_pels_log2_lookup[bsize];
 
         best_rdc = this_rdc;
+        best_partition = PARTITION_NONE;
 
         // If all y, u, v transform blocks in this partition are skippable, and
         // the dist & rate are within the thresholds, the partition search is
@@ -2246,10 +2248,12 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
     if (reached_last_index && sum_rdc.rdcost < best_rdc.rdcost) {
       const int partition_context =
           partition_plane_context(xd, mi_row, mi_col, bsize);
+      printf("SPLIT PART cost: %d %d\n", cpi->partition_cost[partition_context][PARTITION_SPLIT], partition_context);
       sum_rdc.rate += cpi->partition_cost[partition_context][PARTITION_SPLIT];
       sum_rdc.rdcost = RDCOST(x->rdmult, x->rddiv, sum_rdc.rate, sum_rdc.dist);
 
       if (sum_rdc.rdcost < best_rdc.rdcost) {
+        best_partition = PARTITION_SPLIT;
         best_rdc = sum_rdc;
 
         save_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
@@ -2273,7 +2277,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
         partition_none_allowed)
       x->start_interp_filter = rdctx->best_mi[0].mbmi.interp_filter;
 
-    set_qcoeff_bufs(x, 0, subsize);
+    set_qcoeff_bufs(x, 0, bsize);
     rd_block_pick_mode_encode(cpi, td, tile_data, x, mi_row, mi_col, &sum_rdc, subsize,
                               best_rdc.rdcost);
 
@@ -2305,6 +2309,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
       sum_rdc.rdcost = RDCOST(x->rdmult, x->rddiv, sum_rdc.rate, sum_rdc.dist);
       if (sum_rdc.rdcost < best_rdc.rdcost) {
         best_rdc = sum_rdc;
+        best_partition = PARTITION_HORZ;
         save_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
       }
     }
@@ -2321,7 +2326,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
         partition_none_allowed)
       x->start_interp_filter = rdctx->best_mi[0].mbmi.interp_filter;
 
-    set_qcoeff_bufs(x, 0, subsize);
+    set_qcoeff_bufs(x, 0, bsize);
     rd_block_pick_mode_encode(cpi, td, tile_data, x, mi_row, mi_col, &sum_rdc, subsize,
                               best_rdc.rdcost);
     if (sum_rdc.rdcost < best_rdc.rdcost && !force_vert_split &&
@@ -2351,6 +2356,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
       sum_rdc.rdcost = RDCOST(x->rdmult, x->rddiv, sum_rdc.rate, sum_rdc.dist);
       if (sum_rdc.rdcost < best_rdc.rdcost) {
         best_rdc = sum_rdc;
+        best_partition = PARTITION_VERT;
         save_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
       }
     }
@@ -2363,8 +2369,14 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   (void)best_rd;
   *rd_cost = best_rdc;
 
+  printf("RD: %d %d %ld %ld\n", bsize, best_rdc.rate, best_rdc.dist, best_rdc.rdcost);
+
   if (best_rdc.rate < INT_MAX && best_rdc.dist < INT64_MAX) {
     restore_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
+
+
+    if (best_partition != PARTITION_SPLIT || bsize == BLOCK_8X8)
+      update_partition_context(xd, mi_row, mi_col, get_subsize(bsize, best_partition), bsize);
   }
 
   restore_global_qcoeff_offsets(x, qcoeff_orig, eobs_orig);
