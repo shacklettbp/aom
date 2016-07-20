@@ -1038,7 +1038,7 @@ static void rd_pick_sb_modes(const AV1_COMP *const cpi, TileDataEnc *tile_data,
     }
   }
 
-  printf("XSKIP\n%d %d %d %d\n", x->skip, is_inter_block(mbmi), mi_row, mi_col);
+  //printf("XSKIP\n%d %d %d %d\n", x->skip, is_inter_block(mbmi), mi_row, mi_col);
 
   // Examine the resulting rate and for AQ mode 2 make a segment choice.
   if ((rd_cost->rate != INT_MAX) && (aq_mode == COMPLEXITY_AQ) &&
@@ -1053,6 +1053,7 @@ static void rd_pick_sb_modes(const AV1_COMP *const cpi, TileDataEnc *tile_data,
   // TODO(jingning) The rate-distortion optimization flow needs to be
   // refactored to provide proper exit/return handle.
   if (rd_cost->rate == INT_MAX) rd_cost->rdcost = INT64_MAX;
+  //else printf("RD PICK\n%d %ld %ld\n", rd_cost->rate, rd_cost->dist, rd_cost->rdcost);
 }
 
 #if CONFIG_REF_MV
@@ -2103,13 +2104,17 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   }
 #endif
 
-  do_square_split &= (bsize > BLOCK_8X8);
-  partition_vert_allowed &= (bsize > BLOCK_8X8);
-  partition_horz_allowed &= (bsize > BLOCK_8X8);
+  //do_square_split &= (bsize > BLOCK_8X8);
+  //partition_vert_allowed &= (bsize > BLOCK_8X8);
+  //partition_horz_allowed &= (bsize > BLOCK_8X8);
   //do_square_split = 1;
   //partition_none_allowed = 0;
   //partition_vert_allowed = 0;
   //partition_horz_allowed = 0;
+  do_square_split = (bsize > BLOCK_8X8);
+  partition_none_allowed = (bsize == BLOCK_8X8);
+  partition_vert_allowed = 0;
+  partition_horz_allowed = 0;
 
   // PARTITION_NONE
   if (partition_none_allowed) {
@@ -2439,8 +2444,8 @@ static void tokenize_block(const AV1_COMP *const cpi, TileDataEnc *tile_data, Th
   mbmi = &mi->mbmi;
   seg_skip = segfeature_active(seg, mbmi->segment_id, SEG_LVL_SKIP);
 
-  printf("MBMI mode stats %d %d\n%d %d %d %d\n", mi_row, mi_col, mbmi->mode, is_inter_block(mbmi), mbmi->tx_type, mbmi->tx_size);
-  printf("MBMI skip stats\n%d %d %d\n", mbmi->skip, xd->left_mi ? xd->left_mi->mbmi.skip : 2, xd->above_mi ? xd->above_mi->mbmi.skip : 2);
+  //printf("MBMI mode stats %d %d\n%d %d %d %d\n", mi_row, mi_col, mbmi->mode, is_inter_block(mbmi), mbmi->tx_type, mbmi->tx_size);
+  //printf("MBMI skip stats\n%d %d %d\n", mbmi->skip, xd->left_mi ? xd->left_mi->mbmi.skip : 2, xd->above_mi ? xd->above_mi->mbmi.skip : 2);
 
   assert(bsize == mbmi->sb_type);
  

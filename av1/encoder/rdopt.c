@@ -739,7 +739,7 @@ static void choose_tx_size_from_rd(const AV1_COMP *const cpi, MACROBLOCK *x,
   assert(skip_prob > 0);
   s0 = av1_cost_bit(skip_prob, 0);
   s1 = av1_cost_bit(skip_prob, 1);
-  printf("cost bits:\n%d %d\n", s0, s1);
+  //printf("cost bits:\n%d %d\n", s0, s1);
 
   if (tx_select) {
     start_tx = max_tx_size;
@@ -854,6 +854,16 @@ static void super_block_yrd(const AV1_COMP *const cpi, MACROBLOCK *x, int *rate,
     choose_tx_size_from_rd(cpi, x, rate, distortion, skip, ret_sse, ref_best_rd,
                            bs);
   }
+  ////printf("COEFF stats\n");
+  //int i;
+  //for (i = 0; i < num_pels_log2_lookup[bs]; i++) {
+  //  //printf("%d ", x->plane[0].coeff[i]);
+  //}
+  ////printf("\n");
+  //for (i = 0; i < num_pels_log2_lookup[bs]; i++) {
+  //  //printf("%d ", xd->plane[0].dst.buf[i]);
+  //}
+  ////printf("\n");
 }
 
 static int conditional_skipintra(PREDICTION_MODE mode,
@@ -3373,7 +3383,7 @@ static int64_t handle_inter_mode(
       super_block_yrd(cpi, x, rate_y, &distortion_y, &skippable_y, psse, bsize,
                       ref_best_rd);
 
-      printf("r %d %d:\n%d\n", mi_row, mi_col, *rate_y);
+      //printf("r %d %d:\n%d\n", mi_row, mi_col, *rate_y);
 
       if (*rate_y == INT_MAX) {
         *rate2 = INT_MAX;
@@ -4586,19 +4596,19 @@ void av1_rd_pick_inter_mode_sb(const AV1_COMP *cpi, TileDataEnc *tile_data,
   }
 
   x->skip |= best_mode_skippable;
-  printf("XSKIP SRC\n%d %d %d\n", best_skip2, best_mode_skippable, x->skip);
+  //printf("XSKIP SRC\n%d %d %d\n", best_skip2, best_mode_skippable, x->skip);
 
   memcpy(x->zcoeff_blk[mbmi->tx_size], best_zcoeff,
          sizeof(x->zcoeff_blk[mbmi->tx_size][0]) * num_4x4_blks);
 
-  printf("XSKIP PEN1\n%d\n", x->skip);
+  //printf("XSKIP PEN1\n%d\n", x->skip);
 
   assert(best_mode_index >= 0);
 
   store_coding_stats(x, best_mode_index, best_pred_diff,
                      best_mode_skippable);
 
-  printf("XSKIP PEN2\n%d\n", x->skip);
+  //printf("XSKIP PEN2\n%d\n", x->skip);
 }
 
 void av1_rd_pick_inter_mode_sb_seg_skip(const AV1_COMP *cpi,
@@ -4753,7 +4763,7 @@ void av1_rd_pick_inter_mode_sub8x8(const AV1_COMP *cpi, TileDataEnc *tile_data,
   int internal_active_edge =
       av1_active_edge_sb(cpi, mi_row, mi_col) && av1_internal_image_edge(cpi);
   int num_4x4_blks = 1 << (num_pels_log2_lookup[bsize] - 4);
-  uint8_t best_zcoeff[MAX_SB_SQUARE / 16]; // Max number of 4x4 blocks
+  uint8_t best_zcoeff[MAX_SB_SQUARE / 16];
 
   memset(x->zcoeff_blk[TX_4X4], 0, 4);
   av1_zero(best_mbmode);
@@ -5335,12 +5345,35 @@ void av1_rd_encode_block(const AV1_COMP *const cpi, ThreadData *const td, MACROB
     av1_build_inter_predictors_sbuv(xd, mi_row, mi_col,
                                     AOMMAX(bsize, BLOCK_8X8));
 
+    printf("Predict stats %d %d\n", mi_row, mi_col);
+    int i;
+    for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
+      printf("%d ", xd->plane[0].pre[0].buf[i]);
+    }
+    printf("\n");
+    for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
+      printf("%d ", xd->plane[0].dst.buf[i]);
+    }
+    printf("\n");
+    printf("XSKIP\n%d\n", x->skip);
+
 #if CONFIG_MOTION_VAR
     if (mbmi->motion_mode == OBMC_CAUSAL)
       av1_build_obmc_inter_predictors_sb(cm, xd, mi_row, mi_col);
 #endif  // CONFIG_MOTION_VAR
 
     av1_encode_sb(x, AOMMAX(bsize, BLOCK_8X8));
+
+    printf("Encode stats %d %d\n", mi_row, mi_col);
+    for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
+      printf("%d ", x->plane[0].coeff[i]);
+    }
+    printf("\n");
+    for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
+      printf("%d ", xd->plane[0].dst.buf[i]);
+    }
+    printf("\n");
+
     av1_tokenize_sb(cpi, td, NULL, 1, AOMMAX(bsize, BLOCK_8X8));
   }
 }

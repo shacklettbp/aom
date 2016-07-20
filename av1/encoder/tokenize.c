@@ -427,11 +427,11 @@ static void tokenize_b(int plane, int block, int blk_row, int blk_col,
   (void)plane_bsize;
   pt = get_entropy_context(tx_size, pd->above_context + blk_col,
                            pd->left_context + blk_row);
-  printf("Plane\n%d\n", plane);
-  printf("EC\n%d\n", pt);
-  printf("EOB\n%d\n", eob);
-  printf("QC[0]\n%d\n", qcoeff[0]);
-  printf("MBMI\n%d %d %d %d\n", mbmi->sb_type, mbmi->mode, mbmi->tx_size, mbmi->skip);
+  //printf("Plane\n%d\n", plane);
+  //printf("EC\n%d\n", pt);
+  //printf("EOB\n%d\n", eob);
+  //printf("QC[0]\n%d\n", qcoeff[0]);
+  //printf("MBMI\n%d %d %d %d %d\n", mbmi->sb_type, mbmi->mode, mbmi->tx_size, mbmi->skip, is_inter_block(mbmi));
   scan = so->scan;
   nb = so->neighbors;
   c = 0;
