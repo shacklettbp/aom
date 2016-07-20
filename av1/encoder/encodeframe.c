@@ -1167,7 +1167,7 @@ static void rd_pick_sb_modes(const AV1_COMP *const cpi, TileDataEnc *tile_data,
     }
   }
 
-  printf("XSKIP\n%d %d %d %d\n", x->skip, is_inter_block(mbmi), mi_row, mi_col);
+  //printf("XSKIP\n%d %d %d %d\n", x->skip, is_inter_block(mbmi), mi_row, mi_col);
 
   // Examine the resulting rate and for AQ mode 2 make a segment choice.
   if ((rd_cost->rate != INT_MAX) && (aq_mode == COMPLEXITY_AQ) &&
@@ -1182,6 +1182,7 @@ static void rd_pick_sb_modes(const AV1_COMP *const cpi, TileDataEnc *tile_data,
   // TODO(jingning) The rate-distortion optimization flow needs to be
   // refactored to provide proper exit/return handle.
   if (rd_cost->rate == INT_MAX) rd_cost->rdcost = INT64_MAX;
+  //else printf("RD PICK\n%d %ld %ld\n", rd_cost->rate, rd_cost->dist, rd_cost->rdcost);
 
   ctx->rate = rd_cost->rate;
   ctx->dist = rd_cost->dist;
@@ -2204,10 +2205,17 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   }
 #endif
 
-  do_square_split &= (bsize > BLOCK_8X8);
-  partition_vert_allowed &= (bsize > BLOCK_8X8);
-  partition_horz_allowed &= (bsize > BLOCK_8X8);
+  //do_square_split &= (bsize > BLOCK_8X8);
+  //partition_vert_allowed &= (bsize > BLOCK_8X8);
+  //partition_horz_allowed &= (bsize > BLOCK_8X8);
+  //do_square_split = 1;
   //partition_none_allowed = 0;
+  //partition_vert_allowed = 0;
+  //partition_horz_allowed = 0;
+  do_square_split = (bsize > BLOCK_8X8);
+  partition_none_allowed = (bsize == BLOCK_8X8);
+  partition_vert_allowed = 0;
+  partition_horz_allowed = 0;
 
   // PARTITION_NONE
   if (partition_none_allowed) {
@@ -3007,10 +3015,10 @@ static void encode_superblock(const AV1_COMP *const cpi, ThreadData *td,
     if (output_enabled)
       sum_intra_stats(td->counts, mi, xd->above_mi, xd->left_mi,
                       frame_is_intra_only(cm));
-    if (output_enabled) {
-      printf("MBMI mode stats %d %d\n%d %d %d %d\n", mi_row, mi_col, mbmi->mode, is_inter_block(mbmi), mbmi->tx_type, mbmi->tx_size);
-      printf("MBMI skip stats\n%d %d %d\n", mbmi->skip, xd->left_mi ? xd->left_mi->mbmi.skip : 2, xd->above_mi ? xd->above_mi->mbmi.skip : 2);
-    }
+    //if (output_enabled) {
+    //  printf("MBMI mode stats %d %d\n%d %d %d %d\n", mi_row, mi_col, mbmi->mode, is_inter_block(mbmi), mbmi->tx_type, mbmi->tx_size);
+    //  printf("MBMI skip stats\n%d %d %d\n", mbmi->skip, xd->left_mi ? xd->left_mi->mbmi.skip : 2, xd->above_mi ? xd->above_mi->mbmi.skip : 2);
+    //}
     av1_tokenize_sb(cpi, td, t, !output_enabled, AOMMAX(bsize, BLOCK_8X8));
     
     //printf("MBMI encoded %d %d\n%d\n", mi_row, mi_col, mbmi->skip);
@@ -3031,6 +3039,21 @@ static void encode_superblock(const AV1_COMP *const cpi, ThreadData *td,
     av1_build_inter_predictors_sbuv(xd, mi_row, mi_col,
                                     AOMMAX(bsize, BLOCK_8X8));
 
+    if (output_enabled) {
+      printf("Predict stats %d %d\n", mi_row, mi_col);
+      int i;
+      for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
+        printf("%d ", xd->plane[0].pre[0].buf[i]);
+      }
+      printf("\n");
+      for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
+        printf("%d ", xd->plane[0].dst.buf[i]);
+      }
+      printf("\n");
+
+      printf("XSKIP\n%d\n", x->skip);
+    }
+
 #if CONFIG_MOTION_VAR
     if (mbmi->motion_mode == OBMC_CAUSAL)
       av1_build_obmc_inter_predictors_sb(cm, xd, mi_row, mi_col);
@@ -3039,8 +3062,19 @@ static void encode_superblock(const AV1_COMP *const cpi, ThreadData *td,
     av1_encode_sb(x, AOMMAX(bsize, BLOCK_8X8));
 
     if (output_enabled) {
-      printf("MBMI mode stats %d %d\n%d %d %d %d\n", mi_row, mi_col, mbmi->mode, is_inter_block(mbmi), mbmi->tx_type, mbmi->tx_size);
-      printf("MBMI skip stats\n%d %d %d\n", mbmi->skip, xd->left_mi ? xd->left_mi->mbmi.skip : 2, xd->above_mi ? xd->above_mi->mbmi.skip : 2);
+      printf("Encode stats %d %d\n", mi_row, mi_col);
+      int i;
+      for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
+        printf("%d ", x->plane[0].coeff[i]);
+      }
+      printf("\n");
+      for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
+        printf("%d ", xd->plane[0].dst.buf[i]);
+      }
+      printf("\n");
+
+      //printf("MBMI mode stats %d %d\n%d %d %d %d\n", mi_row, mi_col, mbmi->mode, is_inter_block(mbmi), mbmi->tx_type, mbmi->tx_size);
+      //printf("MBMI skip stats\n%d %d %d\n", mbmi->skip, xd->left_mi ? xd->left_mi->mbmi.skip : 2, xd->above_mi ? xd->above_mi->mbmi.skip : 2);
     }
 
     av1_tokenize_sb(cpi, td, t, !output_enabled, AOMMAX(bsize, BLOCK_8X8));
