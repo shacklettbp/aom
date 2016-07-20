@@ -971,8 +971,6 @@ static void rd_pick_sb_modes(const AV1_COMP *const cpi, TileDataEnc *tile_data,
 
   aom_clear_system_state();
 
-  printf("PREXSKIP\n%d %d %d\n", x->skip, mi_row, mi_col);
-
   // Use the lower precision, but faster, 32x32 fdct for mode selection.
   x->use_lp32x32fdct = 1;
 

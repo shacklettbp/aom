@@ -3719,7 +3719,7 @@ void av1_rd_pick_inter_mode_sb(const AV1_COMP *cpi, TileDataEnc *tile_data,
   int *mode_map = tile_data->mode_map[bsize];
   const int mode_search_skip_flags = sf->mode_search_skip_flags;
   int num_4x4_blks = 1 << (num_pels_log2_lookup[bsize] - 4);
-  uint8_t best_zcoeff[256 * MAX_SB_SQUARE / 16];
+  uint8_t best_zcoeff[MAX_SB_SQUARE / 16]; // Max number of 4x4 blocks
 #if CONFIG_EXT_INTRA
   int angle_stats_ready = 0;
   int8_t uv_angle_delta[TX_SIZES];
@@ -4420,7 +4420,7 @@ void av1_rd_pick_inter_mode_sb(const AV1_COMP *cpi, TileDataEnc *tile_data,
         best_mode_skippable = skippable;
 
         memcpy(best_zcoeff, x->zcoeff_blk[mbmi->tx_size],
-               sizeof(x->zcoeff_blk[0]) * num_4x4_blks);
+               sizeof(best_zcoeff[0]) * num_4x4_blks);
       }
     }
 
@@ -4753,8 +4753,7 @@ void av1_rd_pick_inter_mode_sub8x8(const AV1_COMP *cpi, TileDataEnc *tile_data,
   int internal_active_edge =
       av1_active_edge_sb(cpi, mi_row, mi_col) && av1_internal_image_edge(cpi);
   int num_4x4_blks = 1 << (num_pels_log2_lookup[bsize] - 4);
-  // best_zcoeff is large enough to hold all coefficients for a 64x64 block
-  uint8_t best_zcoeff[256 * MAX_SB_SQUARE / 16];
+  uint8_t best_zcoeff[MAX_SB_SQUARE / 16]; // Max number of 4x4 blocks
 
   memset(x->zcoeff_blk[TX_4X4], 0, 4);
   av1_zero(best_mbmode);
@@ -5191,7 +5190,7 @@ void av1_rd_pick_inter_mode_sub8x8(const AV1_COMP *cpi, TileDataEnc *tile_data,
         best_mbmode = *mbmi;
         best_skip2 = this_skip2;
         memcpy(best_zcoeff, x->zcoeff_blk[TX_4X4],
-               sizeof(x->zcoeff_blk[0]) * num_4x4_blks);
+               sizeof(best_zcoeff[0]) * num_4x4_blks);
 
         for (i = 0; i < 4; i++) best_bmodes[i] = xd->mi[0]->bmi[i];
       }
@@ -5269,7 +5268,7 @@ void av1_rd_pick_inter_mode_sub8x8(const AV1_COMP *cpi, TileDataEnc *tile_data,
   }
 
   memcpy(x->zcoeff_blk[TX_4X4], best_zcoeff,
-         sizeof(x->zcoeff_blk[0]) * num_4x4_blks);
+         sizeof(x->zcoeff_blk[TX_4X4][0]) * num_4x4_blks);
 
   store_coding_stats(x, best_ref_index, best_pred_diff, 0);
 }
