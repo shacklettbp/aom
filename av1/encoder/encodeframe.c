@@ -1167,6 +1167,8 @@ static void rd_pick_sb_modes(const AV1_COMP *const cpi, TileDataEnc *tile_data,
     }
   }
 
+  printf("XSKIP\n%d %d %d %d\n", x->skip, is_inter_block(mbmi), mi_row, mi_col);
+
   // Examine the resulting rate and for AQ mode 2 make a segment choice.
   if ((rd_cost->rate != INT_MAX) && (aq_mode == COMPLEXITY_AQ) &&
       (bsize >= BLOCK_16X16) &&

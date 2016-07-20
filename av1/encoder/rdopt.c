@@ -4623,6 +4623,7 @@ void av1_rd_pick_inter_mode_sb(const AV1_COMP *cpi, TileDataEnc *tile_data,
   }
 
   x->skip |= best_mode_skippable;
+  printf("XSKIP SRC\n%d %d %d\n", best_skip2, best_mode_skippable, x->skip);
 
   if (!x->skip && !x->select_tx_size) {
     int has_high_freq_coeff = 0;
@@ -4641,10 +4642,14 @@ void av1_rd_pick_inter_mode_sb(const AV1_COMP *cpi, TileDataEnc *tile_data,
     best_mode_skippable |= !has_high_freq_coeff;
   }
 
+  printf("XSKIP PEN1\n%d\n", x->skip);
+
   assert(best_mode_index >= 0);
 
   store_coding_context(x, ctx, best_mode_index, best_pred_diff,
                        best_mode_skippable);
+
+  printf("XSKIP PEN2\n%d\n", x->skip);
 }
 
 void av1_rd_pick_inter_mode_sb_seg_skip(const AV1_COMP *cpi,
