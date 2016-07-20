@@ -2202,6 +2202,11 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   }
 #endif
 
+  do_square_split &= (bsize > BLOCK_8X8);
+  partition_vert_allowed &= (bsize > BLOCK_8X8);
+  partition_horz_allowed &= (bsize > BLOCK_8X8);
+  //partition_none_allowed = 0;
+
   // PARTITION_NONE
   if (partition_none_allowed) {
     rd_pick_sb_modes(cpi, tile_data, x, mi_row, mi_col, &this_rdc, bsize, ctx,
@@ -2450,9 +2455,11 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   (void)best_rd;
   *rd_cost = best_rdc;
 
-  if (best_rdc.rate < INT_MAX && best_rdc.dist < INT64_MAX &&
-      pc_tree->index != 3) {
+  if (best_rdc.rate < INT_MAX && best_rdc.dist < INT64_MAX) {
     int output_enabled = (bsize == BLOCK_64X64);
+
+    //printf("RD: %d %d %d %ld %ld\n", bsize, pc_tree->partitioning, best_rdc.rate, best_rdc.dist, best_rdc.rdcost);
+
     encode_sb(cpi, td, tile_info, tp, mi_row, mi_col, output_enabled, bsize,
               pc_tree);
   }
@@ -2989,6 +2996,7 @@ static void encode_superblock(const AV1_COMP *const cpi, ThreadData *td,
   ctx->is_coded = 1;
   x->use_lp32x32fdct = cpi->sf.use_lp32x32fdct;
 
+
   if (!is_inter_block(mbmi)) {
     int plane;
     mbmi->skip = 1;
@@ -2997,7 +3005,13 @@ static void encode_superblock(const AV1_COMP *const cpi, ThreadData *td,
     if (output_enabled)
       sum_intra_stats(td->counts, mi, xd->above_mi, xd->left_mi,
                       frame_is_intra_only(cm));
+    if (output_enabled) {
+      printf("MBMI mode stats %d %d\n%d %d %d %d\n", mi_row, mi_col, mbmi->mode, is_inter_block(mbmi), mbmi->tx_type, mbmi->tx_size);
+      printf("MBMI skip stats\n%d %d %d\n", mbmi->skip, xd->left_mi ? xd->left_mi->mbmi.skip : 2, xd->above_mi ? xd->above_mi->mbmi.skip : 2);
+    }
     av1_tokenize_sb(cpi, td, t, !output_enabled, AOMMAX(bsize, BLOCK_8X8));
+    
+    //printf("MBMI encoded %d %d\n%d\n", mi_row, mi_col, mbmi->skip);
   } else {
     int ref;
     const int is_compound = has_second_ref(mbmi);
@@ -3021,6 +3035,12 @@ static void encode_superblock(const AV1_COMP *const cpi, ThreadData *td,
 #endif  // CONFIG_MOTION_VAR
 
     av1_encode_sb(x, AOMMAX(bsize, BLOCK_8X8));
+
+    if (output_enabled) {
+      printf("MBMI mode stats %d %d\n%d %d %d %d\n", mi_row, mi_col, mbmi->mode, is_inter_block(mbmi), mbmi->tx_type, mbmi->tx_size);
+      printf("MBMI skip stats\n%d %d %d\n", mbmi->skip, xd->left_mi ? xd->left_mi->mbmi.skip : 2, xd->above_mi ? xd->above_mi->mbmi.skip : 2);
+    }
+
     av1_tokenize_sb(cpi, td, t, !output_enabled, AOMMAX(bsize, BLOCK_8X8));
   }
 

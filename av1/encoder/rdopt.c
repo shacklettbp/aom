@@ -764,6 +764,7 @@ static void choose_tx_size_from_rd(const AV1_COMP *const cpi, MACROBLOCK *x,
   assert(skip_prob > 0);
   s0 = av1_cost_bit(skip_prob, 0);
   s1 = av1_cost_bit(skip_prob, 1);
+  printf("cost bits:\n%d %d\n", s0, s1);
 
   if (tx_select) {
     start_tx = max_tx_size;
@@ -3404,6 +3405,8 @@ static int64_t handle_inter_mode(
       av1_subtract_plane(x, bsize, 0);
       super_block_yrd(cpi, x, rate_y, &distortion_y, &skippable_y, psse, bsize,
                       ref_best_rd);
+
+      printf("r %d %d:\n%d\n", mi_row, mi_col, *rate_y);
 
       if (*rate_y == INT_MAX) {
         *rate2 = INT_MAX;
