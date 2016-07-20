@@ -739,6 +739,7 @@ static void choose_tx_size_from_rd(const AV1_COMP *const cpi, MACROBLOCK *x,
   assert(skip_prob > 0);
   s0 = av1_cost_bit(skip_prob, 0);
   s1 = av1_cost_bit(skip_prob, 1);
+  printf("cost bits:\n%d %d\n", s0, s1);
 
   if (tx_select) {
     start_tx = max_tx_size;
@@ -3369,8 +3370,11 @@ static int64_t handle_inter_mode(
 
       // Y cost and distortion
       av1_subtract_plane(x, bsize, 0);
+      printf("pdiff: %d\n", x->plane[0].src_diff[0]);
       super_block_yrd(cpi, x, rate_y, &distortion_y, &skippable_y, psse, bsize,
                       ref_best_rd);
+
+      printf("r: %d\n", *rate_y);
 
       if (*rate_y == INT_MAX) {
         *rate2 = INT_MAX;
@@ -4564,6 +4568,8 @@ void av1_rd_pick_inter_mode_sb(const AV1_COMP *cpi, TileDataEnc *tile_data,
 
   // macroblock modes
   *mbmi = best_mbmode;
+  printf("Best MBMI\n%d %d %d\n", mbmi->sb_type, mbmi->mode, mbmi->tx_size);
+  printf("Best MBMI EXT\n%d %d\n", mbmi_ext->mode_context[0], mbmi_ext->ref_mvs[0][0]);
   x->skip |= best_skip2;
 
 #if CONFIG_REF_MV
@@ -5275,8 +5281,6 @@ void av1_rd_encode_block(const AV1_COMP *const cpi, ThreadData *const td, MACROB
   MODE_INFO **mi_8x8 = xd->mi;
   MODE_INFO *mi = mi_8x8[0];
   MB_MODE_INFO *mbmi = &mi->mbmi;
-  const int seg_skip =
-      segfeature_active(seg, mbmi->segment_id, SEG_LVL_SKIP);
 
   memset(x->skip_txfm, 0, sizeof(x->skip_txfm));
 
@@ -5322,9 +5326,8 @@ void av1_rd_encode_block(const AV1_COMP *const cpi, ThreadData *const td, MACROB
       av1_setup_pre_planes(xd, ref, cfg, mi_row, mi_col,
                            &xd->block_refs[ref]->sf);
     }
-    if (seg_skip)
-      av1_build_inter_predictors_sby(xd, mi_row, mi_col,
-                                     AOMMAX(bsize, BLOCK_8X8));
+    av1_build_inter_predictors_sby(xd, mi_row, mi_col,
+                                   AOMMAX(bsize, BLOCK_8X8));
 
     av1_build_inter_predictors_sbuv(xd, mi_row, mi_col,
                                     AOMMAX(bsize, BLOCK_8X8));

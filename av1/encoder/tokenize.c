@@ -539,6 +539,9 @@ void av1_tokenize_sb(const AV1_COMP *cpi, ThreadData *td, TOKENEXTRA **t,
   const int skip_inc =
       !segfeature_active(&cm->seg, mbmi->segment_id, SEG_LVL_SKIP);
   struct tokenize_b_args arg = { cpi, td, t };
+
+  if (!dry_run)
+    printf("SKIP\n%d %d %d\n", mbmi->skip, skip_inc, td->counts->skip[ctx][1]);
   if (mbmi->skip) {
     if (!dry_run) td->counts->skip[ctx][1] += skip_inc;
     reset_skip_context(xd, bsize);
@@ -549,6 +552,7 @@ void av1_tokenize_sb(const AV1_COMP *cpi, ThreadData *td, TOKENEXTRA **t,
     int plane;
 
     td->counts->skip[ctx][0] += skip_inc;
+    printf("SKIPC\n%d %d\n", td->counts->skip[ctx][0], td->counts->skip[ctx][1]);
 
     for (plane = 0; plane < MAX_MB_PLANE; ++plane) {
       av1_foreach_transformed_block_in_plane(xd, bsize, plane, tokenize_b,

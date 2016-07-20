@@ -242,8 +242,10 @@ static void update_skip_probs(AV1_COMMON *cm, aom_writer *w,
                               FRAME_COUNTS *counts) {
   int k;
 
-  for (k = 0; k < SKIP_CONTEXTS; ++k)
+  for (k = 0; k < SKIP_CONTEXTS; ++k) {
+    printf("SKIP Count: %d %d\n", k, counts->skip[k][0]);
     av1_cond_prob_diff_update(w, &cm->fc->skip_probs[k], counts->skip[k]);
+  }
 }
 
 static void update_switchable_interp_probs(AV1_COMMON *cm, aom_writer *w,
