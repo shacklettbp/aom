@@ -3370,11 +3370,10 @@ static int64_t handle_inter_mode(
 
       // Y cost and distortion
       av1_subtract_plane(x, bsize, 0);
-      printf("pdiff: %d\n", x->plane[0].src_diff[0]);
       super_block_yrd(cpi, x, rate_y, &distortion_y, &skippable_y, psse, bsize,
                       ref_best_rd);
 
-      printf("r: %d\n", *rate_y);
+      printf("r %d %d:\n%d\n", mi_row, mi_col, *rate_y);
 
       if (*rate_y == INT_MAX) {
         *rate2 = INT_MAX;
@@ -4568,8 +4567,6 @@ void av1_rd_pick_inter_mode_sb(const AV1_COMP *cpi, TileDataEnc *tile_data,
 
   // macroblock modes
   *mbmi = best_mbmode;
-  printf("Best MBMI\n%d %d %d\n", mbmi->sb_type, mbmi->mode, mbmi->tx_size);
-  printf("Best MBMI EXT\n%d %d\n", mbmi_ext->mode_context[0], mbmi_ext->ref_mvs[0][0]);
   x->skip |= best_skip2;
 
 #if CONFIG_REF_MV
@@ -5315,6 +5312,8 @@ void av1_rd_encode_block(const AV1_COMP *const cpi, ThreadData *const td, MACROB
     mbmi->skip = 1;
     for (plane = 0; plane < MAX_MB_PLANE; ++plane)
       av1_encode_intra_block_plane(x, AOMMAX(bsize, BLOCK_8X8), plane);
+
+    //printf("MBMI encoded %d %d\n%d\n", mi_row, mi_col, mbmi->skip);
     av1_tokenize_sb(cpi, td, NULL, 1, AOMMAX(bsize, BLOCK_8X8));
   } else {
     int ref;

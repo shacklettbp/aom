@@ -431,7 +431,7 @@ static void tokenize_b(int plane, int block, int blk_row, int blk_col,
   printf("EC\n%d\n", pt);
   printf("EOB\n%d\n", eob);
   printf("QC[0]\n%d\n", qcoeff[0]);
-  printf("MBMI\n%d %d %d\n", mbmi->sb_type, mbmi->mode, mbmi->tx_size);
+  printf("MBMI\n%d %d %d %d\n", mbmi->sb_type, mbmi->mode, mbmi->tx_size, mbmi->skip);
   scan = so->scan;
   nb = so->neighbors;
   c = 0;
@@ -540,8 +540,6 @@ void av1_tokenize_sb(const AV1_COMP *cpi, ThreadData *td, TOKENEXTRA **t,
       !segfeature_active(&cm->seg, mbmi->segment_id, SEG_LVL_SKIP);
   struct tokenize_b_args arg = { cpi, td, t };
 
-  if (!dry_run)
-    printf("SKIP\n%d %d %d\n", mbmi->skip, skip_inc, td->counts->skip[ctx][1]);
   if (mbmi->skip) {
     if (!dry_run) td->counts->skip[ctx][1] += skip_inc;
     reset_skip_context(xd, bsize);
@@ -552,7 +550,6 @@ void av1_tokenize_sb(const AV1_COMP *cpi, ThreadData *td, TOKENEXTRA **t,
     int plane;
 
     td->counts->skip[ctx][0] += skip_inc;
-    printf("SKIPC\n%d %d\n", td->counts->skip[ctx][0], td->counts->skip[ctx][1]);
 
     for (plane = 0; plane < MAX_MB_PLANE; ++plane) {
       av1_foreach_transformed_block_in_plane(xd, bsize, plane, tokenize_b,

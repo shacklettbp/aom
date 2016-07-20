@@ -1038,8 +1038,6 @@ static void rd_pick_sb_modes(const AV1_COMP *const cpi, TileDataEnc *tile_data,
     }
   }
 
-  printf("SKIP??\n%d\n", mbmi->skip);
-
   // Examine the resulting rate and for AQ mode 2 make a segment choice.
   if ((rd_cost->rate != INT_MAX) && (aq_mode == COMPLEXITY_AQ) &&
       (bsize >= BLOCK_16X16) &&
@@ -2103,8 +2101,6 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   }
 #endif
 
-  printf("PICKINFO\n%d %d %d %d\n", mi_row, mi_col, bsize, part_idx);
-
   do_square_split &= (bsize > BLOCK_8X8);
   partition_vert_allowed &= (bsize > BLOCK_8X8);
   partition_horz_allowed &= (bsize > BLOCK_8X8);
@@ -2221,7 +2217,6 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
       if (sum_rdc.rate == INT_MAX) sum_rdc.rdcost = INT64_MAX;
       reached_last_index = 1;
     } else {
-      printf("START SPLIT\n");
       int idx;
       for (idx = 0; idx < 4 && sum_rdc.rdcost < best_rdc.rdcost; ++idx) {
         const int x_idx = (idx & 1) * mi_step;
@@ -2237,7 +2232,6 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
             &this_rdc, best_rdc.rdcost - sum_rdc.rdcost);
 
         if (this_rdc.rate == INT_MAX) {
-          printf("sum early terminate %d\n", best_rdc.rdcost - sum_rdc.rdcost);
           sum_rdc.rdcost = INT64_MAX;
           break;
         } else {
@@ -2247,13 +2241,11 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
         }
       }
       reached_last_index = (idx == 4);
-      printf("END SPLIT\n");
     }
 
     if (reached_last_index && sum_rdc.rdcost < best_rdc.rdcost) {
       const int partition_context =
           partition_plane_context(xd, mi_row, mi_col, bsize);
-      printf("SPLIT PART cost: %d %d\n", cpi->partition_cost[partition_context][PARTITION_SPLIT], partition_context);
       sum_rdc.rate += cpi->partition_cost[partition_context][PARTITION_SPLIT];
       sum_rdc.rdcost = RDCOST(x->rdmult, x->rddiv, sum_rdc.rate, sum_rdc.dist);
 
@@ -2262,8 +2254,6 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
         best_rdc = sum_rdc;
 
         save_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
-
-        printf("PARTITION_SPLIT better\n");
       }
     } else if (cpi->sf.less_rectangular_check) {
       // skip rectangular partition test when larger block size
@@ -2374,11 +2364,9 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   (void)best_rd;
   *rd_cost = best_rdc;
 
-
   if (best_rdc.rate < INT_MAX && best_rdc.dist < INT64_MAX) {
     restore_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
-    printf("RD: %d %d %d %ld %ld\n", bsize, best_partition, best_rdc.rate, best_rdc.dist, best_rdc.rdcost);
-
+    //printf("RD: %d %d %d %ld %ld\n", bsize, best_partition, best_rdc.rate, best_rdc.dist, best_rdc.rdcost);
 
     if (best_partition != PARTITION_SPLIT || bsize == BLOCK_8X8)
       update_partition_context(xd, mi_row, mi_col, get_subsize(bsize, best_partition), bsize);
@@ -2448,6 +2436,9 @@ static void tokenize_block(const AV1_COMP *const cpi, TileDataEnc *tile_data, Th
   mi = xd->mi[0];
   mbmi = &mi->mbmi;
   seg_skip = segfeature_active(seg, mbmi->segment_id, SEG_LVL_SKIP);
+
+  printf("MBMI mode stats %d %d\n%d %d %d %d\n", mi_row, mi_col, mbmi->mode, is_inter_block(mbmi), mbmi->tx_type, mbmi->tx_size);
+  printf("MBMI skip stats\n%d %d %d\n", mbmi->skip, xd->left_mi ? xd->left_mi->mbmi.skip : 2, xd->above_mi ? xd->above_mi->mbmi.skip : 2);
 
   assert(bsize == mbmi->sb_type);
  
