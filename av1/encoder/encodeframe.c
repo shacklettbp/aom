@@ -1420,10 +1420,12 @@ static void rd_block_pick_mode_encode(const AV1_COMP *const cpi, ThreadData *con
                                       RD_COST *rd_cost, BLOCK_SIZE bsize, int64_t best_rd) {
   ENTROPY_CONTEXT l[16 * MAX_MB_PLANE], a[16 * MAX_MB_PLANE];
   PARTITION_CONTEXT sl[8], sa[8];
-  save_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+  save_entropy_context(x, mi_row, mi_col, a, l, sa, sl, AOMMAX(bsize, BLOCK_8X8));
+
   rd_pick_sb_modes(cpi, tile_data, x, mi_row, mi_col, rd_cost, bsize, best_rd);
 
-  restore_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+  /* Restore entropy state for reencode. */
+  restore_entropy_context(x, mi_row, mi_col, a, l, sa, sl, AOMMAX(bsize, BLOCK_8X8));
 
   if (rd_cost->rate == INT_MAX)
     return;
@@ -1513,7 +1515,7 @@ static void set_fixed_partitioning(AV1_COMP *cpi, const TileInfo *const tile,
 
 static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
                              TileDataEnc *tile_data, MODE_INFO **mi_8x8,
-                             int depth, int mi_row, int mi_col,
+                             int depth, int part_idx, int mi_row, int mi_col,
                              BLOCK_SIZE bsize, int *rate, int64_t *dist) {
   AV1_COMMON *const cm = &cpi->common;
   TileInfo *const tile_info = &tile_data->tile_info;
@@ -1523,6 +1525,8 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
   const int mis = cm->mi_stride;
   const int bsl = b_width_log2_lookup[bsize];
   const int mi_step = num_4x4_blocks_wide_lookup[bsize] / 2;
+  tran_low_t *qcoeff_orig[MAX_MB_PLANE];
+  uint16_t *eobs_orig[MAX_MB_PLANE];
   const int bss = (1 << bsl) / 4;
   int i, pl;
   PARTITION_TYPE partition = PARTITION_NONE;
@@ -1547,12 +1551,15 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
   partition = partition_lookup[bsl][bs_type];
   subsize = get_subsize(bsize, partition);
 
-  save_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+  save_global_qcoeff_offsets(x, qcoeff_orig, eobs_orig);
+  set_global_qcoeff_offsets(x, part_idx, bsize);
 
+  set_offsets(cpi, tile_info, x, mi_row, mi_col, bsize);
+
+  save_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
   save_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
 
   if (bsize == BLOCK_16X16 && cpi->oxcf.aq_mode) {
-    set_offsets(cpi, tile_info, x, mi_row, mi_col, bsize);
     x->mb_energy = av1_block_energy(cpi, x, bsize);
   }
 
@@ -1609,6 +1616,7 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
           mi_row + (mi_step >> 1) < cm->mi_rows) {
         RD_COST tmp_rdc;
         av1_rd_cost_init(&tmp_rdc);
+        set_qcoeff_bufs(x, 1, subsize);
         rd_block_pick_mode_encode(cpi, td, tile_data, x, mi_row + (mi_step >> 1), mi_col,
                          &tmp_rdc, subsize, INT64_MAX);
         if (tmp_rdc.rate == INT_MAX || tmp_rdc.dist == INT64_MAX) {
@@ -1627,6 +1635,7 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
           mi_col + (mi_step >> 1) < cm->mi_cols) {
         RD_COST tmp_rdc;
         av1_rd_cost_init(&tmp_rdc);
+        set_qcoeff_bufs(x, 1, subsize);
         rd_block_pick_mode_encode(cpi, td, tile_data, x, mi_row, mi_col + (mi_step >> 1),
                          &tmp_rdc, subsize,
                          INT64_MAX);
@@ -1658,7 +1667,7 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
 
         av1_rd_cost_init(&tmp_rdc);
         rd_use_partition(cpi, td, tile_data, mi_8x8 + jj * bss * mis + ii * bss,
-                         depth + 1, mi_row + y_idx, mi_col + x_idx, subsize,
+                         depth + 1, i, mi_row + y_idx, mi_col + x_idx, subsize,
                          &tmp_rdc.rate, &tmp_rdc.dist);
         if (tmp_rdc.rate == INT_MAX || tmp_rdc.dist == INT64_MAX) {
           av1_rd_cost_reset(&current_rdc);
@@ -1733,17 +1742,17 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
     }
   }
 
-  if (current_rdc.rdcost < chosen_rdc.rdcost) {
+  if (current_rdc.rdcost < chosen_rdc.rdcost)
     chosen_rdc = current_rdc;
-    save_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
-  }
+  else if (chosen_rdc.rate < INT_MAX) // Restore the previous selection
+    restore_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
+
+  restore_global_qcoeff_offsets(x, qcoeff_orig, eobs_orig);
 
   // We must have chosen a partitioning and encoding or we'll fail later on.
   // No other opportunities for success.
   if (bsize == BLOCK_64X64)
     assert(chosen_rdc.rate < INT_MAX && chosen_rdc.dist < INT64_MAX);
-
-  restore_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
 
   *rate = chosen_rdc.rate;
   *dist = chosen_rdc.dist;
@@ -2040,10 +2049,9 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
 
   save_global_qcoeff_offsets(x, qcoeff_orig, eobs_orig);
   set_global_qcoeff_offsets(x, part_idx, bsize);
+  set_qcoeff_bufs(x, 0, bsize);
 
   set_offsets(cpi, tile_info, x, mi_row, mi_col, bsize);
-
-  save_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
 
   printf("Entropy Start %d %d\n", mi_row, mi_col);
   int idy, idx;
@@ -2145,14 +2153,6 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   }
 #endif
 
-  //do_square_split &= (bsize > BLOCK_8X8);
-  //partition_vert_allowed &= (bsize > BLOCK_8X8);
-  //partition_horz_allowed &= (bsize > BLOCK_8X8);
-  do_square_split = 1;
-  partition_none_allowed = 0;
-  partition_vert_allowed = 0;
-  partition_horz_allowed = 0;
-
   // PARTITION_NONE
   if (partition_none_allowed) {
     rd_block_pick_mode_encode(cpi, td, tile_data, x, mi_row, mi_col, &this_rdc, bsize,
@@ -2250,6 +2250,15 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   if (do_square_split) {
     int reached_last_index = 0;
     restore_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+
+    printf("Entropy Prestart %d %d\n", mi_row, mi_col);
+    int idy, idx;
+    for (idy = 0; idy < num_4x4_blocks_high_lookup[bsize]; idy++) {
+      for (idx = 0; idx < num_4x4_blocks_wide_lookup[bsize]; idx++) {
+        printf("%d %d ", xd->plane[0].above_context[idx], xd->plane[0].left_context[idy]);
+      }
+    }
+    printf("\n");
 
     subsize = get_subsize(bsize, PARTITION_SPLIT);
 
@@ -2409,58 +2418,14 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   *rd_cost = best_rdc;
 
   if (best_rdc.rate < INT_MAX && best_rdc.dist < INT64_MAX) {
-    printf("RD: %d %d %d %ld %ld\n", bsize, best_partition, best_rdc.rate, best_rdc.dist, best_rdc.rdcost);
+    printf("RD: %d %d %d %d %d %ld %ld\n", mi_row, mi_col, bsize, best_partition, best_rdc.rate, best_rdc.dist, best_rdc.rdcost);
 
     restore_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
-
-    if (bsize == 3) {
-      printf("XSKIP\n%d\n", x->skip);
-      printf("EC\n");
-      int i;
-      ENTROPY_CONTEXT at[16], lt[16];
-      printf("TXSIZE\n%d\n", xd->mi[0]->mbmi.tx_size);
-      av1_get_entropy_contexts(bsize, xd->mi[0]->mbmi.tx_size, &xd->plane[0], at, lt);
-      for (i = 0; i < 2; i++) {
-        printf("%d %d ", at[i], lt[i]);
-      }
-      printf("\n");
-      printf("EOBS\n");
-      for (i = 0; i < 4; i++) {
-        printf("%d ", x->plane[0].eobs[i]);
-      }
-      printf("\n");
-      printf("XSKIPTXFM\n%d %d %d %d\n", x->skip_txfm[0], x->skip_txfm[1], x->skip_txfm[2], x->skip_txfm[3]);
-      for (i = 0; i < 64; i++) {
-        printf("%d ", x->plane[0].coeff[i]);
-      }
-      printf("\n");
-      for (i = 0; i < 64; i++) {
-        printf("%d ", x->plane[0].qcoeff[i]);
-      }
-      printf("\n");
-      for (i = 0; i < 4; i++) {
-        printf("%d ", x->zcoeff_blk[TX_4X4][i]);
-      }
-      printf("\n");
-    }
-    save_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize); // FIXME unnecessary
-    if (bsize == 3) {
-      printf("INTER?\n%d\n", is_inter_block(&xd->mi[0]->mbmi));
-    }
-    printf("Entropy End %d %d %d %d\n", mi_row, mi_col, part_idx, bsize);
-    int idy, idx;
-    for (idy = 0; idy < num_4x4_blocks_high_lookup[bsize]; idy++) {
-      for (idx = 0; idx < num_4x4_blocks_wide_lookup[bsize]; idx++) {
-        printf("%d %d ", a[idx], l[idy]);
-      }
-    }
-    printf("\n");
 
     if (best_partition != PARTITION_SPLIT || bsize == BLOCK_8X8)
       update_partition_context(xd, mi_row, mi_col, get_subsize(bsize, best_partition), bsize);
   }
   
-
   restore_global_qcoeff_offsets(x, qcoeff_orig, eobs_orig);
 
   if (bsize == BLOCK_64X64) {
@@ -2747,19 +2712,19 @@ static void encode_rd_sb_row(AV1_COMP *cpi, ThreadData *td,
           seg_skip ? BLOCK_64X64 : sf->always_this_block_size;
       set_offsets(cpi, tile_info, x, mi_row, mi_col, BLOCK_64X64);
       set_fixed_partitioning(cpi, tile_info, mi, mi_row, mi_col, bsize);
-      rd_use_partition(cpi, td, tile_data, mi, 0, mi_row, mi_col, BLOCK_64X64,
+      rd_use_partition(cpi, td, tile_data, mi, 0, 0, mi_row, mi_col, BLOCK_64X64,
                        &dummy_rate, &dummy_dist);
     } else if (cpi->partition_search_skippable_frame) {
       BLOCK_SIZE bsize;
       set_offsets(cpi, tile_info, x, mi_row, mi_col, BLOCK_64X64);
       bsize = get_rd_var_based_fixed_partition(cpi, x, mi_row, mi_col);
       set_fixed_partitioning(cpi, tile_info, mi, mi_row, mi_col, bsize);
-      rd_use_partition(cpi, td, tile_data, mi, 0, mi_row, mi_col, BLOCK_64X64,
+      rd_use_partition(cpi, td, tile_data, mi, 0, 0, mi_row, mi_col, BLOCK_64X64,
                        &dummy_rate, &dummy_dist);
     } else if (sf->partition_search_type == VAR_BASED_PARTITION &&
                cm->frame_type != KEY_FRAME) {
       choose_partitioning(cpi, tile_info, x, mi_row, mi_col);
-      rd_use_partition(cpi, td, tile_data, mi, 0, mi_row, mi_col, BLOCK_64X64,
+      rd_use_partition(cpi, td, tile_data, mi, 0, 0, mi_row, mi_col, BLOCK_64X64,
                        &dummy_rate, &dummy_dist);
     } else {
       // If required set upper and lower partition size limits

@@ -3739,7 +3739,7 @@ void av1_rd_pick_inter_mode_sb(const AV1_COMP *cpi, TileDataEnc *tile_data,
   int *mode_map = tile_data->mode_map[bsize];
   const int mode_search_skip_flags = sf->mode_search_skip_flags;
   int num_4x4_blks = 1 << (num_pels_log2_lookup[bsize] - 4);
-  uint8_t best_zcoeff[MAX_SB_SQUARE / 16]; // Max number of 4x4 blocks
+  uint8_t best_zcoeff[MAX_SB_SQUARE / 16] = { 0 }; // Max number of 4x4 blocks
 #if CONFIG_EXT_INTRA
   int angle_stats_ready = 0;
   int8_t uv_angle_delta[TX_SIZES];
@@ -4770,10 +4770,9 @@ void av1_rd_pick_inter_mode_sub8x8(const AV1_COMP *cpi, TileDataEnc *tile_data,
   int ref_frame_skip_mask[2] = { 0 };
   int internal_active_edge =
       av1_active_edge_sb(cpi, mi_row, mi_col) && av1_internal_image_edge(cpi);
-  int num_4x4_blks = 1 << (num_pels_log2_lookup[bsize] - 4);
-  uint8_t best_zcoeff[MAX_SB_SQUARE / 16];
+  int num_4x4_blks = 1 << (num_pels_log2_lookup[BLOCK_8X8] - 4);
+  uint8_t best_zcoeff[MAX_SB_SQUARE / 16] = { 0 };
 
-  memset(x->zcoeff_blk[TX_4X4], 0, 4);
   av1_zero(best_mbmode);
 
   for (i = 0; i < 4; i++) {
@@ -5292,7 +5291,7 @@ void av1_rd_pick_inter_mode_sub8x8(const AV1_COMP *cpi, TileDataEnc *tile_data,
   memcpy(x->zcoeff_blk[TX_4X4], best_zcoeff,
          sizeof(x->zcoeff_blk[TX_4X4][0]) * num_4x4_blks);
 
-  printf("zcoeff %d\n", x->zcoeff_blk[TX_4X4][0]);
+  printf("zcoeff %d %d\n%d %d %d %d\n", mi_row, mi_col, x->zcoeff_blk[TX_4X4][0], x->zcoeff_blk[TX_4X4][1], x->zcoeff_blk[TX_4X4][2], x->zcoeff_blk[TX_4X4][3]);
 
   store_coding_stats(x, best_ref_index, best_pred_diff, 0);
 }
@@ -5341,7 +5340,6 @@ void av1_rd_encode_block(const AV1_COMP *const cpi, ThreadData *const td, MACROB
     for (plane = 0; plane < MAX_MB_PLANE; ++plane)
       av1_encode_intra_block_plane(x, AOMMAX(bsize, BLOCK_8X8), plane);
 
-    //printf("MBMI encoded %d %d\n%d\n", mi_row, mi_col, mbmi->skip);
     av1_tokenize_sb(cpi, td, NULL, 1, AOMMAX(bsize, BLOCK_8X8));
   } else {
     int ref;
@@ -5359,34 +5357,12 @@ void av1_rd_encode_block(const AV1_COMP *const cpi, ThreadData *const td, MACROB
     av1_build_inter_predictors_sbuv(xd, mi_row, mi_col,
                                     AOMMAX(bsize, BLOCK_8X8));
 
-    //printf("Predict stats %d %d\n", mi_row, mi_col);
-    //int i;
-    //for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
-    //  printf("%d ", xd->plane[0].pre[0].buf[i]);
-    //}
-    //printf("\n");
-    //for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
-    //  printf("%d ", xd->plane[0].dst.buf[i]);
-    //}
-    //printf("\n");
-    //printf("XSKIP\n%d\n", x->skip);
-
 #if CONFIG_MOTION_VAR
     if (mbmi->motion_mode == OBMC_CAUSAL)
       av1_build_obmc_inter_predictors_sb(cm, xd, mi_row, mi_col);
 #endif  // CONFIG_MOTION_VAR
 
     av1_encode_sb(x, AOMMAX(bsize, BLOCK_8X8));
-
-    //printf("Encode stats %d %d\n", mi_row, mi_col);
-    //for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
-    //  printf("%d ", x->plane[0].coeff[i]);
-    //}
-    //printf("\n");
-    //for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
-    //  printf("%d ", xd->plane[0].dst.buf[i]);
-    //}
-    //printf("\n");
 
     av1_tokenize_sb(cpi, td, NULL, 1, AOMMAX(bsize, BLOCK_8X8));
   }
