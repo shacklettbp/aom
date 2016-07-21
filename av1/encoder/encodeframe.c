@@ -1167,6 +1167,7 @@ static void update_stats(const AV1_COMMON *const cm, ThreadData *td) {
       int16_t mode_ctx = mbmi_ext->mode_context[mbmi->ref_frame[0]];
       if (bsize >= BLOCK_8X8) {
         const PREDICTION_MODE mode = mbmi->mode;
+        printf("IMODE counts\n%d %d %d\n", mode, mode_ctx, mbmi->ref_frame[0]);
 #if CONFIG_REF_MV
         mode_ctx = av1_mode_context_analyzer(mbmi_ext->mode_context,
                                              mbmi->ref_frame, bsize, -1);
@@ -1291,7 +1292,7 @@ void save_rd_results(const AV1_COMP *const cpi, RDContext *const rdctx, ThreadDa
   const int mi_width = num_8x8_blocks_wide_lookup[bsize];
   const int mi_height = num_8x8_blocks_high_lookup[bsize];
   MODE_INFO **mi_base = cm->mi_grid_visible + xd->mi_stride * mi_row + mi_col;
-  MB_MODE_INFO_EXT *mbmi_ext = cpi->mbmi_ext_base + mi_row * cm->mi_cols + mi_col;
+  MB_MODE_INFO_EXT *mbmi_ext_base = cpi->mbmi_ext_base + mi_row * cm->mi_cols + mi_col;
 
   // TODO(xormask): there wind up being several unnecessary calls to
   // setup_dst_planes, (here and set_offsets), work out way to avoid this
@@ -1328,9 +1329,13 @@ void save_rd_results(const AV1_COMP *const cpi, RDContext *const rdctx, ThreadDa
       rdctx->best_mi_ptrs[x_idx + y * mi_width] = mi_cur;
       if (mi_cur)
         rdctx->best_mi[x_idx + y * mi_width] = *mi_cur;
+
+      if (mi_row + y < cm->mi_rows && mi_col + x_idx < cm->mi_cols) {
+        MB_MODE_INFO_EXT *mbmi_ext_cur = mbmi_ext_base + y * cm->mi_cols + x_idx;
+        rdctx->best_mbmi_exts[x_idx + y * mi_width] = *mbmi_ext_cur;
+      }
     }
   }
-  rdctx->best_mbmi_ext = *mbmi_ext;
 
   save_entropy_context(x, mi_row, mi_col, rdctx->a, rdctx->l, rdctx->sa, rdctx->sl, bsize);
 }
@@ -1343,7 +1348,7 @@ void restore_rd_results(const AV1_COMP *const cpi, const RDContext *const rdctx,
   const int mi_width = num_8x8_blocks_wide_lookup[bsize];
   const int mi_height = num_8x8_blocks_high_lookup[bsize];
   MODE_INFO **mi_base = cm->mi_grid_visible + xd->mi_stride * mi_row + mi_col;
-  MB_MODE_INFO_EXT *mbmi_ext = cpi->mbmi_ext_base + mi_row * cm->mi_cols + mi_col;
+  MB_MODE_INFO_EXT *mbmi_ext_base = cpi->mbmi_ext_base + mi_row * cm->mi_cols + mi_col;
 
   av1_setup_dst_planes(xd->plane, get_frame_new_buffer(cm), mi_row, mi_col);
   set_qcoeff_bufs(x, 0, bsize);
@@ -1372,13 +1377,17 @@ void restore_rd_results(const AV1_COMP *const cpi, const RDContext *const rdctx,
   for (y = 0; y < mi_height; y++) {
     for (x_idx = 0; x_idx < mi_width; x_idx++) {
       MODE_INFO **mi_cur = &mi_base[x_idx + y * xd->mi_stride];
+
       *mi_cur = rdctx->best_mi_ptrs[x_idx + y * mi_width];
       if (*mi_cur)
         **mi_cur = rdctx->best_mi[x_idx + y * mi_width];
+
+      if (mi_row + y < cm->mi_rows && mi_col + x_idx < cm->mi_cols) {
+        MB_MODE_INFO_EXT *mbmi_ext_cur = mbmi_ext_base + y * cm->mi_cols + x_idx;
+        *mbmi_ext_cur = rdctx->best_mbmi_exts[x_idx + y * mi_width];
+      }
     }
   }
-
-  *mbmi_ext = rdctx->best_mbmi_ext;
 
   restore_entropy_context(x, mi_row, mi_col, rdctx->a, rdctx->l, rdctx->sa, rdctx->sl, bsize);
 }
@@ -2104,18 +2113,6 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   }
 #endif
 
-  //do_square_split &= (bsize > BLOCK_8X8);
-  //partition_vert_allowed &= (bsize > BLOCK_8X8);
-  //partition_horz_allowed &= (bsize > BLOCK_8X8);
-  //do_square_split = 1;
-  //partition_none_allowed = 0;
-  //partition_vert_allowed = 0;
-  //partition_horz_allowed = 0;
-  do_square_split = (bsize > BLOCK_8X8);
-  partition_none_allowed = (bsize == BLOCK_8X8);
-  partition_vert_allowed = 0;
-  partition_horz_allowed = 0;
-
   // PARTITION_NONE
   if (partition_none_allowed) {
     rd_block_pick_mode_encode(cpi, td, tile_data, x, mi_row, mi_col, &this_rdc, bsize,
@@ -2373,7 +2370,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
 
   if (best_rdc.rate < INT_MAX && best_rdc.dist < INT64_MAX) {
     restore_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
-    //printf("RD: %d %d %d %ld %ld\n", bsize, best_partition, best_rdc.rate, best_rdc.dist, best_rdc.rdcost);
+    printf("RD: %d %d %d %ld %ld\n", bsize, best_partition, best_rdc.rate, best_rdc.dist, best_rdc.rdcost);
 
     if (best_partition != PARTITION_SPLIT || bsize == BLOCK_8X8)
       update_partition_context(xd, mi_row, mi_col, get_subsize(bsize, best_partition), bsize);

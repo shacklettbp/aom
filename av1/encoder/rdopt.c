@@ -5345,17 +5345,17 @@ void av1_rd_encode_block(const AV1_COMP *const cpi, ThreadData *const td, MACROB
     av1_build_inter_predictors_sbuv(xd, mi_row, mi_col,
                                     AOMMAX(bsize, BLOCK_8X8));
 
-    printf("Predict stats %d %d\n", mi_row, mi_col);
-    int i;
-    for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
-      printf("%d ", xd->plane[0].pre[0].buf[i]);
-    }
-    printf("\n");
-    for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
-      printf("%d ", xd->plane[0].dst.buf[i]);
-    }
-    printf("\n");
-    printf("XSKIP\n%d\n", x->skip);
+    //printf("Predict stats %d %d\n", mi_row, mi_col);
+    //int i;
+    //for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
+    //  printf("%d ", xd->plane[0].pre[0].buf[i]);
+    //}
+    //printf("\n");
+    //for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
+    //  printf("%d ", xd->plane[0].dst.buf[i]);
+    //}
+    //printf("\n");
+    //printf("XSKIP\n%d\n", x->skip);
 
 #if CONFIG_MOTION_VAR
     if (mbmi->motion_mode == OBMC_CAUSAL)
@@ -5364,15 +5364,15 @@ void av1_rd_encode_block(const AV1_COMP *const cpi, ThreadData *const td, MACROB
 
     av1_encode_sb(x, AOMMAX(bsize, BLOCK_8X8));
 
-    printf("Encode stats %d %d\n", mi_row, mi_col);
-    for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
-      printf("%d ", x->plane[0].coeff[i]);
-    }
-    printf("\n");
-    for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
-      printf("%d ", xd->plane[0].dst.buf[i]);
-    }
-    printf("\n");
+    //printf("Encode stats %d %d\n", mi_row, mi_col);
+    //for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
+    //  printf("%d ", x->plane[0].coeff[i]);
+    //}
+    //printf("\n");
+    //for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
+    //  printf("%d ", xd->plane[0].dst.buf[i]);
+    //}
+    //printf("\n");
 
     av1_tokenize_sb(cpi, td, NULL, 1, AOMMAX(bsize, BLOCK_8X8));
   }
