@@ -739,7 +739,6 @@ static void choose_tx_size_from_rd(const AV1_COMP *const cpi, MACROBLOCK *x,
   assert(skip_prob > 0);
   s0 = av1_cost_bit(skip_prob, 0);
   s1 = av1_cost_bit(skip_prob, 1);
-  printf("cost bits:\n%d %d\n", s0, s1);
 
   if (tx_select) {
     start_tx = max_tx_size;
@@ -854,16 +853,6 @@ static void super_block_yrd(const AV1_COMP *const cpi, MACROBLOCK *x, int *rate,
     choose_tx_size_from_rd(cpi, x, rate, distortion, skip, ret_sse, ref_best_rd,
                            bs);
   }
-  ////printf("COEFF stats\n");
-  //int i;
-  //for (i = 0; i < num_pels_log2_lookup[bs]; i++) {
-  //  //printf("%d ", x->plane[0].coeff[i]);
-  //}
-  ////printf("\n");
-  //for (i = 0; i < num_pels_log2_lookup[bs]; i++) {
-  //  //printf("%d ", xd->plane[0].dst.buf[i]);
-  //}
-  ////printf("\n");
 }
 
 static int conditional_skipintra(PREDICTION_MODE mode,
@@ -1039,7 +1028,6 @@ static int64_t rd_pick_intra4x4block(const AV1_COMP *const cpi, MACROBLOCK *x,
         av1_predict_intra_block(xd, 1, 1, TX_4X4, mode, dst, dst_stride, dst,
                                 dst_stride, col + idx, row + idy, 0);
         aom_subtract_block(4, 4, src_diff, 8, src, src_stride, dst, dst_stride);
-        printf("TMPEC\n%d %d %d %d\n", tempa[idx], templ[idy], a[idx], l[idy]);
 
         if (xd->lossless[xd->mi[0]->mbmi.segment_id]) {
           TX_TYPE tx_type = get_tx_type(PLANE_TYPE_Y, xd, block);
@@ -1123,14 +1111,6 @@ static int64_t rd_pick_intra_sub_8x8_y_mode(const AV1_COMP *const cpi,
   mic->mbmi.intra_angle_delta[0] = 0;
 #endif  // CONFIG_EXT_INTRA
 
-  printf("Entropy\n");
-  for (idy = 0; idy < num_4x4_blocks_high; idy++) {
-    for (idx = 0; idx < num_4x4_blocks_wide; idx++) {
-      printf("%d %d ", xd->plane[0].above_context[idx], xd->plane[0].left_context[idy]);
-    }
-  }
-  printf("\n");
-
   // Pick modes for each sub-block (of size 4x4, 4x8, or 8x4) in an 8x8 block.
   for (idy = 0; idy < 2; idy += num_4x4_blocks_high) {
     for (idx = 0; idx < 2; idx += num_4x4_blocks_wide) {
@@ -1150,7 +1130,6 @@ static int64_t rd_pick_intra_sub_8x8_y_mode(const AV1_COMP *const cpi,
           xd->plane[0].above_context + idx, xd->plane[0].left_context + idy, &r,
           &ry, &d, bsize, best_rd - total_rd);
       if (this_rd >= best_rd - total_rd) return INT64_MAX;
-      printf("INNERR\n%d\n", r);
 
       total_rd += this_rd;
       cost += r;
@@ -3393,8 +3372,6 @@ static int64_t handle_inter_mode(
       super_block_yrd(cpi, x, rate_y, &distortion_y, &skippable_y, psse, bsize,
                       ref_best_rd);
 
-      printf("r %d %d:\n%d\n", mi_row, mi_col, *rate_y);
-
       if (*rate_y == INT_MAX) {
         *rate2 = INT_MAX;
         *distortion = INT64_MAX;
@@ -4606,7 +4583,6 @@ void av1_rd_pick_inter_mode_sb(const AV1_COMP *cpi, TileDataEnc *tile_data,
   }
 
   x->skip |= best_mode_skippable;
-  printf("XSKIP SRC\n%d %d %d\n", best_skip2, best_mode_skippable, x->skip);
 
   memcpy(x->zcoeff_blk[mbmi->tx_size], best_zcoeff,
          sizeof(x->zcoeff_blk[mbmi->tx_size][0]) * num_4x4_blks);
@@ -4615,8 +4591,6 @@ void av1_rd_pick_inter_mode_sb(const AV1_COMP *cpi, TileDataEnc *tile_data,
 
   store_coding_stats(x, best_mode_index, best_pred_diff,
                      best_mode_skippable);
-
-  //printf("XSKIP PEN2\n%d\n", x->skip);
 }
 
 void av1_rd_pick_inter_mode_sb_seg_skip(const AV1_COMP *cpi,
@@ -4972,7 +4946,6 @@ void av1_rd_pick_inter_mode_sub8x8(const AV1_COMP *cpi, TileDataEnc *tile_data,
       rate2 += rate;
       rate2 += intra_cost_penalty;
       distortion2 += distortion_y;
-      printf("INTRAREFY\n%d\n", rate2);
 
       if (rate_uv_intra == INT_MAX) {
         choose_intra_uv_mode(cpi, x, bsize, TX_4X4, &rate_uv_intra,
@@ -4983,7 +4956,6 @@ void av1_rd_pick_inter_mode_sub8x8(const AV1_COMP *cpi, TileDataEnc *tile_data,
       distortion2 += dist_uv;
       distortion_uv = dist_uv;
       mbmi->uv_mode = mode_uv;
-      printf("INTRAREF\n%d\n", rate2);
     } else {
       int rate;
       int64_t distortion;
@@ -5286,12 +5258,8 @@ void av1_rd_pick_inter_mode_sub8x8(const AV1_COMP *cpi, TileDataEnc *tile_data,
       best_pred_diff[i] = best_rd - best_pred_rd[i];
   }
 
-  printf("sub skip\n%d\n", x->skip);
-
   memcpy(x->zcoeff_blk[TX_4X4], best_zcoeff,
          sizeof(x->zcoeff_blk[TX_4X4][0]) * num_4x4_blks);
-
-  printf("zcoeff %d %d\n%d %d %d %d\n", mi_row, mi_col, x->zcoeff_blk[TX_4X4][0], x->zcoeff_blk[TX_4X4][1], x->zcoeff_blk[TX_4X4][2], x->zcoeff_blk[TX_4X4][3]);
 
   store_coding_stats(x, best_ref_index, best_pred_diff, 0);
 }
