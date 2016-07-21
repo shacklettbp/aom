@@ -1020,6 +1020,15 @@ static void rd_pick_sb_modes(const AV1_COMP *const cpi, TileDataEnc *tile_data,
       x->rdmult = av1_cyclic_refresh_get_rdmult(cpi->cyclic_refresh);
   }
 
+  printf("Entropy Outer Before %d %d\n", mi_row, mi_col);
+  int idy, idx;
+  for (idy = 0; idy < num_4x4_blocks_high_lookup[bsize]; idy++) {
+    for (idx = 0; idx < num_4x4_blocks_wide_lookup[bsize]; idx++) {
+      printf("%d %d ", xd->plane[0].above_context[idx], xd->plane[0].left_context[idy]);
+    }
+  }
+  printf("\n");
+
   // Find best coding mode & reconstruct the MB so it is available
   // as a predictor for MBs that follow in the SB
   if (frame_is_intra_only(cm)) {
@@ -1037,6 +1046,20 @@ static void rd_pick_sb_modes(const AV1_COMP *const cpi, TileDataEnc *tile_data,
                                     bsize, best_rd);
     }
   }
+
+  printf("XSTATS\n");
+  for (idx = 0; idx < 4; idx++) {
+    printf("%d %d\n", x->zcoeff_blk[TX_4X4][idx], x->skip_txfm[idx]);
+  }
+  printf("\n");
+
+  printf("Entropy Outer %d %d\n", mi_row, mi_col);
+  for (idy = 0; idy < num_4x4_blocks_high_lookup[bsize]; idy++) {
+    for (idx = 0; idx < num_4x4_blocks_wide_lookup[bsize]; idx++) {
+      printf("%d %d ", xd->plane[0].above_context[idx], xd->plane[0].left_context[idy]);
+    }
+  }
+  printf("\n");
 
   //printf("XSKIP\n%d %d %d %d\n", x->skip, is_inter_block(mbmi), mi_row, mi_col);
 
@@ -1407,7 +1430,7 @@ static void rd_block_pick_mode_encode(const AV1_COMP *const cpi, ThreadData *con
 
   // Set all the mi grid pointers for this block before doing a full encode
   set_mode_info_grid(cpi, &x->e_mbd, mi_row, mi_col, bsize);
-  
+
   av1_rd_encode_block(cpi, td, x, mi_row, mi_col, bsize, rd_cost);
 
   if (rd_cost->rate == INT_MAX) {
@@ -2022,6 +2045,15 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
 
   save_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
 
+  printf("Entropy Start %d %d\n", mi_row, mi_col);
+  int idy, idx;
+  for (idy = 0; idy < num_4x4_blocks_high_lookup[bsize]; idy++) {
+    for (idx = 0; idx < num_4x4_blocks_wide_lookup[bsize]; idx++) {
+      printf("%d %d ", xd->plane[0].above_context[idx], xd->plane[0].left_context[idy]);
+    }
+  }
+  printf("\n");
+
   // Hack so start_interp_filter is set to SWITCHABLE first
   rdctx->best_mi[0].mbmi.interp_filter = SWITCHABLE;
 
@@ -2112,6 +2144,14 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
     }
   }
 #endif
+
+  //do_square_split &= (bsize > BLOCK_8X8);
+  //partition_vert_allowed &= (bsize > BLOCK_8X8);
+  //partition_horz_allowed &= (bsize > BLOCK_8X8);
+  do_square_split = 1;
+  partition_none_allowed = 0;
+  partition_vert_allowed = 0;
+  partition_horz_allowed = 0;
 
   // PARTITION_NONE
   if (partition_none_allowed) {
@@ -2369,12 +2409,57 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   *rd_cost = best_rdc;
 
   if (best_rdc.rate < INT_MAX && best_rdc.dist < INT64_MAX) {
-    restore_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
     printf("RD: %d %d %d %ld %ld\n", bsize, best_partition, best_rdc.rate, best_rdc.dist, best_rdc.rdcost);
+
+    restore_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
+
+    if (bsize == 3) {
+      printf("XSKIP\n%d\n", x->skip);
+      printf("EC\n");
+      int i;
+      ENTROPY_CONTEXT at[16], lt[16];
+      printf("TXSIZE\n%d\n", xd->mi[0]->mbmi.tx_size);
+      av1_get_entropy_contexts(bsize, xd->mi[0]->mbmi.tx_size, &xd->plane[0], at, lt);
+      for (i = 0; i < 2; i++) {
+        printf("%d %d ", at[i], lt[i]);
+      }
+      printf("\n");
+      printf("EOBS\n");
+      for (i = 0; i < 4; i++) {
+        printf("%d ", x->plane[0].eobs[i]);
+      }
+      printf("\n");
+      printf("XSKIPTXFM\n%d %d %d %d\n", x->skip_txfm[0], x->skip_txfm[1], x->skip_txfm[2], x->skip_txfm[3]);
+      for (i = 0; i < 64; i++) {
+        printf("%d ", x->plane[0].coeff[i]);
+      }
+      printf("\n");
+      for (i = 0; i < 64; i++) {
+        printf("%d ", x->plane[0].qcoeff[i]);
+      }
+      printf("\n");
+      for (i = 0; i < 4; i++) {
+        printf("%d ", x->zcoeff_blk[TX_4X4][i]);
+      }
+      printf("\n");
+    }
+    save_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize); // FIXME unnecessary
+    if (bsize == 3) {
+      printf("INTER?\n%d\n", is_inter_block(&xd->mi[0]->mbmi));
+    }
+    printf("Entropy End %d %d %d %d\n", mi_row, mi_col, part_idx, bsize);
+    int idy, idx;
+    for (idy = 0; idy < num_4x4_blocks_high_lookup[bsize]; idy++) {
+      for (idx = 0; idx < num_4x4_blocks_wide_lookup[bsize]; idx++) {
+        printf("%d %d ", a[idx], l[idy]);
+      }
+    }
+    printf("\n");
 
     if (best_partition != PARTITION_SPLIT || bsize == BLOCK_8X8)
       update_partition_context(xd, mi_row, mi_col, get_subsize(bsize, best_partition), bsize);
   }
+  
 
   restore_global_qcoeff_offsets(x, qcoeff_orig, eobs_orig);
 

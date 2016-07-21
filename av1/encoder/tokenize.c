@@ -344,6 +344,7 @@ static void set_entropy_context_b(int plane, int block, int blk_row,
   struct macroblock_plane *p = &x->plane[plane];
   struct macroblockd_plane *pd = &xd->plane[plane];
   (void)plane_bsize;
+  //printf("EC %d %d\n%d\n", blk_col, blk_row, p->eobs[block]);
   av1_set_contexts(xd, pd, tx_size, p->eobs[block] > 0, blk_col, blk_row);
 }
 
@@ -353,7 +354,7 @@ static INLINE void add_token(TOKENEXTRA **t, const aom_prob *context_tree,
 #endif  // CONFIG_RANS
                              int32_t extra, uint8_t token,
                              uint8_t skip_eob_node, unsigned int *counts) {
-  printf("ATE:\n%d %d %d %d %d\n", token, *context_tree, extra, skip_eob_node, counts[token]);
+  //printf("ATE:\n%d %d %d %d %d\n", token, *context_tree, extra, skip_eob_node, counts[token]);
   (*t)->token = token;
   (*t)->extra = extra;
   (*t)->context_tree = context_tree;
@@ -372,7 +373,7 @@ static INLINE void add_token_no_extra(TOKENEXTRA **t,
 #endif  // CONFIG_RANS
                                       uint8_t token, uint8_t skip_eob_node,
                                       unsigned int *counts) {
-  printf("ATNE:\n%d %d %d %d\n", token, *context_tree, skip_eob_node, counts[token]);
+  //printf("ATNE:\n%d %d %d %d\n", token, *context_tree, skip_eob_node, counts[token]);
   (*t)->token = token;
   (*t)->context_tree = context_tree;
 #if CONFIG_RANS
@@ -429,11 +430,11 @@ static void tokenize_b(int plane, int block, int blk_row, int blk_col,
   (void)plane_bsize;
   pt = get_entropy_context(tx_size, pd->above_context + blk_col,
                            pd->left_context + blk_row);
-  printf("Plane\n%d\n", plane);
-  printf("EC\n%d\n", pt);
-  printf("EOB\n%d\n", eob);
-  printf("MBMI\n%d %d %d %d %d\n", mbmi->sb_type, mbmi->mode, mbmi->tx_size, mbmi->skip, is_inter_block(mbmi));
-  printf("QC\n");
+  //printf("Plane\n%d\n", plane);
+  //printf("EC\n%d\n", pt);
+  //printf("EOB\n%d\n", eob);
+  //printf("MBMI\n%d %d %d %d %d\n", mbmi->sb_type, mbmi->mode, mbmi->tx_size, mbmi->skip, is_inter_block(mbmi));
+  //printf("QC\n");
   //int i;
   //for (i = 0; i < 16; i++)
   //  printf("%d ", qcoeff[i]);
@@ -446,7 +447,7 @@ static void tokenize_b(int plane, int block, int blk_row, int blk_col,
     int v = 0;
     int skip_eob = 0;
     v = qcoeff[scan[c]];
-    printf("%d ", v);
+    //printf("%d ", v);
 
     while (!v) {
       add_token_no_extra(&t, coef_probs[band[c]][pt],
@@ -462,7 +463,7 @@ static void tokenize_b(int plane, int block, int blk_row, int blk_col,
       pt = get_coef_context(nb, token_cache, c);
       v = qcoeff[scan[c]];
 
-      printf("%d %d ", v, pt);
+      //printf("%d %d ", v, pt);
     }
 
     av1_get_token_extra(v, &token, &extra);
@@ -478,10 +479,10 @@ static void tokenize_b(int plane, int block, int blk_row, int blk_col,
     ++c;
     pt = get_coef_context(nb, token_cache, c);
   }
-  printf("\n");
+  //printf("\n");
 
   if (c < seg_eob) {
-    printf("EOB\n");
+    //printf("EOB\n");
     add_token_no_extra(&t, coef_probs[band[c]][pt],
 #if CONFIG_RANS
                        NULL,
