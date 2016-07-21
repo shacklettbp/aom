@@ -64,11 +64,6 @@ static INLINE int av1_get_skip_context(const MACROBLOCKD *xd) {
 
 static INLINE aom_prob av1_get_skip_prob(const AV1_COMMON *cm,
                                          const MACROBLOCKD *xd) {
-  //const MODE_INFO *const above_mi = xd->above_mi;
-  //const MODE_INFO *const left_mi = xd->left_mi;
-  //const int above_skip = (above_mi != NULL) ? above_mi->mbmi.skip : 0;
-  //const int left_skip = (left_mi != NULL) ? left_mi->mbmi.skip : 0;
-  //printf("context:\n%p %p %d %d\n", above_mi, left_mi, above_skip, left_skip);
   return cm->fc->skip_probs[av1_get_skip_context(xd)];
 }
 
