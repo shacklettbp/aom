@@ -353,6 +353,7 @@ static INLINE void add_token(TOKENEXTRA **t, const aom_prob *context_tree,
 #endif  // CONFIG_RANS
                              int32_t extra, uint8_t token,
                              uint8_t skip_eob_node, unsigned int *counts) {
+  //printf("ATE:\n%d %d %d %d %d\n", token, *context_tree, extra, skip_eob_node, counts[token]);
   (*t)->token = token;
   (*t)->extra = extra;
   (*t)->context_tree = context_tree;
@@ -371,6 +372,7 @@ static INLINE void add_token_no_extra(TOKENEXTRA **t,
 #endif  // CONFIG_RANS
                                       uint8_t token, uint8_t skip_eob_node,
                                       unsigned int *counts) {
+  //printf("ATNE:\n%d %d %d %d\n", token, *context_tree, skip_eob_node, counts[token]);
   (*t)->token = token;
   (*t)->context_tree = context_tree;
 #if CONFIG_RANS
@@ -431,8 +433,12 @@ static void tokenize_b(int plane, int block, int blk_row, int blk_col,
   //printf("Plane\n%d\n", plane);
   //printf("EC\n%d\n", pt);
   //printf("EOB\n%d\n", eob);
-  //printf("QC[0]\n%d\n", qcoeff[0]);
   //printf("MBMI\n%d %d %d %d %d\n", mbmi->sb_type, mbmi->mode, mbmi->tx_size, mbmi->skip, is_inter_block(mbmi));
+  //printf("QC\n");
+  //int i;
+  //for (i = 0; i < 16; i++)
+  //  printf("%d ", qcoeff[i]);
+  //printf("\n");
 
   scan = so->scan;
   nb = so->neighbors;
@@ -442,6 +448,7 @@ static void tokenize_b(int plane, int block, int blk_row, int blk_col,
     int v = 0;
     int skip_eob = 0;
     v = qcoeff[scan[c]];
+    //printf("%d ", v);
 
     while (!v) {
       add_token_no_extra(&t, coef_probs[band[c]][pt],
@@ -456,6 +463,8 @@ static void tokenize_b(int plane, int block, int blk_row, int blk_col,
       ++c;
       pt = get_coef_context(nb, token_cache, c);
       v = qcoeff[scan[c]];
+
+      //printf("%d %d ", v, pt);
     }
 
     av1_get_token_extra(v, &token, &extra);
@@ -471,7 +480,9 @@ static void tokenize_b(int plane, int block, int blk_row, int blk_col,
     ++c;
     pt = get_coef_context(nb, token_cache, c);
   }
+  //printf("\n");
   if (c < seg_eob) {
+    //printf("EOB\n");
     add_token_no_extra(&t, coef_probs[band[c]][pt],
 #if CONFIG_RANS
                        NULL,
