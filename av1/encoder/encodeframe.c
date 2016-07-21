@@ -2481,6 +2481,18 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   } else {
     assert(tp_orig == *tp);
   }
+
+  save_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+  printf("PICK EC %d %d %d\n", mi_row, mi_col, bsize);
+  int i;
+  for (i = 0; i < num_4x4_blocks_wide_lookup[bsize]; i++) {
+    printf("%d ", a[i]);
+  }
+  printf("\n");
+  for (i = 0; i < num_4x4_blocks_high_lookup[bsize]; i++) {
+    printf("%d ", l[i]);
+  }
+  printf("\n");
 }
 
 static void encode_rd_sb_row(AV1_COMP *cpi, ThreadData *td,
@@ -2985,6 +2997,20 @@ static void sum_intra_stats(FRAME_COUNTS *counts, const MODE_INFO *mi,
   ++counts->uv_mode[y_mode][uv_mode];
 }
 
+void print_buf(uint8_t *buf, int buf_stride, BLOCK_SIZE bsize) {
+  int cols = 4*num_4x4_blocks_wide_lookup[bsize];
+  int rows = 4*num_4x4_blocks_high_lookup[bsize];
+  int r, c;
+
+  for (r = 0; r < rows; r++) {
+    for (c = 0; c < cols; c++) {
+      printf("%d ", buf[c]);
+    }
+    buf += buf_stride;
+  }
+  printf("\n");
+}
+
 static void encode_superblock(const AV1_COMP *const cpi, ThreadData *td,
                               TOKENEXTRA **t, int output_enabled, int mi_row,
                               int mi_col, BLOCK_SIZE bsize,
@@ -3039,43 +3065,76 @@ static void encode_superblock(const AV1_COMP *const cpi, ThreadData *td,
     av1_build_inter_predictors_sbuv(xd, mi_row, mi_col,
                                     AOMMAX(bsize, BLOCK_8X8));
 
-    if (output_enabled) {
-      printf("Predict stats %d %d\n", mi_row, mi_col);
-      int i;
-      for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
-        printf("%d ", xd->plane[0].pre[0].buf[i]);
-      }
-      printf("\n");
-      for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
-        printf("%d ", xd->plane[0].dst.buf[i]);
-      }
-      printf("\n");
+    //if (output_enabled) {
+    //  int i;
+    ////  printf("MBMI stuff\n%d %d\n", mbmi->tx_type, mbmi->tx_size);
+    ////  printf("Source stats %d %d\n", mi_row, mi_col);
+    ////  print_buf(x->plane[0].src.buf, x->plane[0].src.stride, bsize);
 
-      printf("XSKIP\n%d\n", x->skip);
-    }
+    ////  printf("Predict stats %d %d\n", mi_row, mi_col);
+    ////  print_buf(xd->plane[0].pre[0].buf, xd->plane[0].pre[0].stride, bsize);
+    ////  printf("PreRes stats\n");
+    ////  print_buf(xd->plane[0].dst.buf, xd->plane[0].dst.stride, bsize);
+    ////  printf("\n");
+
+    //  printf("XSTATS\n%d %d %d %d %d %d\n", x->skip, x->optimize, x->quant_fp, x->skip_block, x->skip_txfm[0], x->use_lp32x32fdct);
+
+    //  for (i = 0; i < (1 << num_pels_log2_lookup[bsize]) / 16; i++) {
+    //    printf("%d ", x->zcoeff_blk[mbmi->tx_size][i]);
+    //  }
+    //  printf("\n");
+
+    //  if (!x->skip) {
+    //    printf("EC\n");
+    //    ENTROPY_CONTEXT a[16], l[16];
+    //    av1_get_entropy_contexts(bsize, mbmi->tx_size, xd->plane, a, l);
+    //    for (i = 0; i < 2; i++) {
+    //      printf("a %d l %d ", a[i], l[i]);
+    //    }
+    //    printf("\n");
+    //  }
+    //}
 
 #if CONFIG_MOTION_VAR
     if (mbmi->motion_mode == OBMC_CAUSAL)
       av1_build_obmc_inter_predictors_sb(cm, xd, mi_row, mi_col);
 #endif  // CONFIG_MOTION_VAR
 
+    //memset(x->plane[0].qcoeff, 0, sizeof(x->plane[0].qcoeff[0]) * (1 << num_pels_log2_lookup[bsize]));
+    //memset(x->plane[0].coeff, 0, sizeof(x->plane[0].coeff[0]) * (1 << num_pels_log2_lookup[bsize]));
     av1_encode_sb(x, AOMMAX(bsize, BLOCK_8X8));
 
-    if (output_enabled) {
-      printf("Encode stats %d %d\n", mi_row, mi_col);
-      int i;
-      for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
-        printf("%d ", x->plane[0].coeff[i]);
-      }
-      printf("\n");
-      for (i = 0; i < num_pels_log2_lookup[bsize]; i++) {
-        printf("%d ", xd->plane[0].dst.buf[i]);
-      }
-      printf("\n");
+    //if (output_enabled) {
 
-      //printf("MBMI mode stats %d %d\n%d %d %d %d\n", mi_row, mi_col, mbmi->mode, is_inter_block(mbmi), mbmi->tx_type, mbmi->tx_size);
-      //printf("MBMI skip stats\n%d %d %d\n", mbmi->skip, xd->left_mi ? xd->left_mi->mbmi.skip : 2, xd->above_mi ? xd->above_mi->mbmi.skip : 2);
-    }
+    //  if (!x->skip) {
+    //    printf("Encode stats %d %d\n", mi_row, mi_col);
+
+    //    int i;
+    //    for (i = 0; i < (1 << num_pels_log2_lookup[bsize]); i++) {
+    //      printf("%d ", x->plane[0].coeff[i]);
+    //    }
+    //    printf("\n");
+    //    print_buf(xd->plane[0].dst.buf, xd->plane[0].dst.stride, bsize);
+    //    printf("Src diff\n");
+    //    for (i = 0; i < (1 << num_pels_log2_lookup[bsize]); i++) {
+    //      printf("%d ", x->plane[0].src_diff[i]);
+    //    }
+    //    printf("\n");
+    //    printf("QCOEFF\n");
+    //    for (i = 0; i < (1 << num_pels_log2_lookup[bsize]); i++) {
+    //      printf("%d ", x->plane[0].qcoeff[i]);
+    //    }
+    //    printf("\n");
+    //    printf("EOBS\n");
+    //    for (i = 0; i < (1 << num_pels_log2_lookup[bsize]) / 16; i++) {
+    //      printf("%d ", x->plane[0].eobs[i]);
+    //    }
+    //    printf("\n");
+    //  }
+
+    //  //printf("MBMI mode stats %d %d\n%d %d %d %d\n", mi_row, mi_col, mbmi->mode, is_inter_block(mbmi), mbmi->tx_type, mbmi->tx_size);
+    //  //printf("MBMI skip stats\n%d %d %d\n", mbmi->skip, xd->left_mi ? xd->left_mi->mbmi.skip : 2, xd->above_mi ? xd->above_mi->mbmi.skip : 2);
+    //}
 
     av1_tokenize_sb(cpi, td, t, !output_enabled, AOMMAX(bsize, BLOCK_8X8));
   }
