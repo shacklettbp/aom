@@ -2292,65 +2292,6 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   // store estimated motion vector
   if (cpi->sf.adaptive_motion_search) store_pred_mv(x, ctx_none);
 
-  // PARTITION_SPLIT
-  // TODO(jingning): use the motion vectors given by the above search as
-  // the starting point of motion search in the following partition type check.
-  if (do_square_split) {
-    int reached_last_index = 0;
-    subsize = get_subsize(bsize, PARTITION_SPLIT);
-    if (bsize == BLOCK_8X8) {
-      if (cpi->sf.adaptive_pred_interp_filter && partition_none_allowed)
-        pc_tree->leaf_split[0]->pred_interp_filter =
-            ctx_none->mic.mbmi.interp_filter;
-      rd_pick_sb_modes(cpi, tile_data, x, mi_row, mi_col, &sum_rdc, subsize,
-                       pc_tree->leaf_split[0], best_rdc.rdcost);
-      if (sum_rdc.rate == INT_MAX) sum_rdc.rdcost = INT64_MAX;
-      reached_last_index = 1;
-    } else {
-      int idx;
-      for (idx = 0; idx < 4 && sum_rdc.rdcost < best_rdc.rdcost; ++idx) {
-        const int x_idx = (idx & 1) * mi_step;
-        const int y_idx = (idx >> 1) * mi_step;
-
-        if (mi_row + y_idx >= cm->mi_rows || mi_col + x_idx >= cm->mi_cols)
-          continue;
-
-        if (cpi->sf.adaptive_motion_search) load_pred_mv(x, ctx_none);
-
-        pc_tree->split[idx]->index = idx;
-        rd_pick_partition(
-            cpi, td, tile_data, tp, mi_row + y_idx, mi_col + x_idx, subsize,
-            &this_rdc, best_rdc.rdcost - sum_rdc.rdcost, pc_tree->split[idx]);
-
-        if (this_rdc.rate == INT_MAX) {
-          sum_rdc.rdcost = INT64_MAX;
-          break;
-        } else {
-          sum_rdc.rate += this_rdc.rate;
-          sum_rdc.dist += this_rdc.dist;
-          sum_rdc.rdcost += this_rdc.rdcost;
-        }
-      }
-      reached_last_index = (idx == 4);
-    }
-
-    if (reached_last_index && sum_rdc.rdcost < best_rdc.rdcost) {
-      const int partition_context =
-          partition_plane_context(xd, mi_row, mi_col, bsize);
-      sum_rdc.rate += cpi->partition_cost[partition_context][PARTITION_SPLIT];
-      sum_rdc.rdcost = RDCOST(x->rdmult, x->rddiv, sum_rdc.rate, sum_rdc.dist);
-
-      if (sum_rdc.rdcost < best_rdc.rdcost) {
-        best_rdc = sum_rdc;
-        pc_tree->partitioning = PARTITION_SPLIT;
-      }
-    } else if (cpi->sf.less_rectangular_check) {
-      // skip rectangular partition test when larger block size
-      // gives better rd cost
-      do_rectangular_split &= !partition_none_allowed;
-    }
-    restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
-  }
 
   // PARTITION_HORZ
   if (partition_horz_allowed &&
@@ -2443,6 +2384,66 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
         best_rdc = sum_rdc;
         pc_tree->partitioning = PARTITION_VERT;
       }
+    }
+    restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+  }
+
+  // PARTITION_SPLIT
+  // TODO(jingning): use the motion vectors given by the above search as
+  // the starting point of motion search in the following partition type check.
+  if (do_square_split) {
+    int reached_last_index = 0;
+    subsize = get_subsize(bsize, PARTITION_SPLIT);
+    if (bsize == BLOCK_8X8) {
+      if (cpi->sf.adaptive_pred_interp_filter && partition_none_allowed)
+        pc_tree->leaf_split[0]->pred_interp_filter =
+            ctx_none->mic.mbmi.interp_filter;
+      rd_pick_sb_modes(cpi, tile_data, x, mi_row, mi_col, &sum_rdc, subsize,
+                       pc_tree->leaf_split[0], best_rdc.rdcost);
+      if (sum_rdc.rate == INT_MAX) sum_rdc.rdcost = INT64_MAX;
+      reached_last_index = 1;
+    } else {
+      int idx;
+      for (idx = 0; idx < 4 && sum_rdc.rdcost < best_rdc.rdcost; ++idx) {
+        const int x_idx = (idx & 1) * mi_step;
+        const int y_idx = (idx >> 1) * mi_step;
+
+        if (mi_row + y_idx >= cm->mi_rows || mi_col + x_idx >= cm->mi_cols)
+          continue;
+
+        if (cpi->sf.adaptive_motion_search) load_pred_mv(x, ctx_none);
+
+        pc_tree->split[idx]->index = idx;
+        rd_pick_partition(
+            cpi, td, tile_data, tp, mi_row + y_idx, mi_col + x_idx, subsize,
+            &this_rdc, best_rdc.rdcost - sum_rdc.rdcost, pc_tree->split[idx]);
+
+        if (this_rdc.rate == INT_MAX) {
+          sum_rdc.rdcost = INT64_MAX;
+          break;
+        } else {
+          sum_rdc.rate += this_rdc.rate;
+          sum_rdc.dist += this_rdc.dist;
+          sum_rdc.rdcost += this_rdc.rdcost;
+        }
+      }
+      reached_last_index = (idx == 4);
+    }
+
+    if (reached_last_index && sum_rdc.rdcost < best_rdc.rdcost) {
+      const int partition_context =
+          partition_plane_context(xd, mi_row, mi_col, bsize);
+      sum_rdc.rate += cpi->partition_cost[partition_context][PARTITION_SPLIT];
+      sum_rdc.rdcost = RDCOST(x->rdmult, x->rddiv, sum_rdc.rate, sum_rdc.dist);
+
+      if (sum_rdc.rdcost < best_rdc.rdcost) {
+        best_rdc = sum_rdc;
+        pc_tree->partitioning = PARTITION_SPLIT;
+      }
+    } else if (cpi->sf.less_rectangular_check) {
+      // skip rectangular partition test when larger block size
+      // gives better rd cost
+      do_rectangular_split &= !partition_none_allowed;
     }
     restore_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
   }
