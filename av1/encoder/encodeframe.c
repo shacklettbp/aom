@@ -2404,6 +2404,7 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
       reached_last_index = 1;
     } else {
       int idx;
+      av1_rd_cost_init(&sum_rdc);
       for (idx = 0; idx < 4 && sum_rdc.rdcost < best_rdc.rdcost; ++idx) {
         const int x_idx = (idx & 1) * mi_step;
         const int y_idx = (idx >> 1) * mi_step;
