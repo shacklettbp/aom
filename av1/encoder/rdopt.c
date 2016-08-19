@@ -611,10 +611,6 @@ static void block_rd_txfm(int plane, int block, int blk_row, int blk_col,
 
   // TODO(jingning): temporarily enabled only for luma component
   rd = AOMMIN(rd1, rd2);
-  if (plane == 0)
-    x->zcoeff_blk[tx_size][block] =
-        !x->plane[plane].eobs[block] ||
-        (rd1 > rd2 && !xd->lossless[mbmi->segment_id]);
 
   args->this_rate += rate;
   args->this_dist += dist;
@@ -756,8 +752,6 @@ static void choose_tx_size_from_rd(const AV1_COMP *const cpi, MACROBLOCK *x,
   const int tx_select = cm->tx_mode == TX_MODE_SELECT;
   TX_TYPE tx_type, best_tx_type = DCT_DCT;
   const int is_inter = is_inter_block(mbmi);
-  uint8_t zcoeff_blk[TX_SIZES][256];
-  int num_4x4_blks = 1 << (num_pels_log2_lookup[bs] - 4);
   const aom_prob *tx_probs = get_tx_probs2(max_tx_size, xd, &cm->fc->tx_probs);
 
   assert(skip_prob > 0);
@@ -843,7 +837,6 @@ static void choose_tx_size_from_rd(const AV1_COMP *const cpi, MACROBLOCK *x,
         *skip = s;
         *psse = sse;
         best_tx_type = mbmi->tx_type;
-        memcpy(zcoeff_blk, x->zcoeff_blk[n], num_4x4_blks);
       }
     }
   }
@@ -852,9 +845,6 @@ static void choose_tx_size_from_rd(const AV1_COMP *const cpi, MACROBLOCK *x,
   mbmi->tx_type = best_tx_type;
 
   if (mbmi->tx_size >= TX_32X32) assert(mbmi->tx_type == DCT_DCT);
-
-  if (best_tx < TX_SIZES)
-    memcpy(x->zcoeff_blk[best_tx], zcoeff_blk, num_4x4_blks);
 }
 
 static void super_block_yrd(const AV1_COMP *const cpi, MACROBLOCK *x, int *rate,
@@ -4282,7 +4272,6 @@ void av1_rd_pick_inter_mode_sb(const AV1_COMP *cpi, TileDataEnc *tile_data,
         int_mv backup_mv = frame_mv[NEARMV][ref_frame];
         MB_MODE_INFO backup_mbmi = *mbmi;
         int backup_skip = x->skip;
-        uint8_t backup_zcoeff_blk[256];
         int64_t tmp_ref_rd = this_rd;
         int ref_idx;
         // TODO(jingning): This should be deprecated shortly.
@@ -4296,9 +4285,6 @@ void av1_rd_pick_inter_mode_sb(const AV1_COMP *cpi, TileDataEnc *tile_data,
         int_mv backup_fmv[2];
         backup_fmv[0] = frame_mv[NEWMV][ref_frame];
         if (comp_pred) backup_fmv[1] = frame_mv[NEWMV][second_ref_frame];
-
-        memcpy(backup_zcoeff_blk, x->zcoeff_blk[mbmi->tx_size],
-               sizeof(backup_zcoeff_blk[0]) * ctx->num_4x4_blk);
 
         rate2 += cpi->drl_mode_cost[drl_ctx][0];
 
@@ -4402,13 +4388,9 @@ void av1_rd_pick_inter_mode_sb(const AV1_COMP *cpi, TileDataEnc *tile_data,
             tmp_ref_rd = tmp_alt_rd;
             backup_mbmi = *mbmi;
             backup_skip = x->skip;
-            memcpy(backup_zcoeff_blk, x->zcoeff_blk[mbmi->tx_size],
-                   sizeof(backup_zcoeff_blk[0]) * ctx->num_4x4_blk);
           } else {
             *mbmi = backup_mbmi;
             x->skip = backup_skip;
-            memcpy(x->zcoeff_blk[mbmi->tx_size], backup_zcoeff_blk,
-                   sizeof(backup_zcoeff_blk[0]) * ctx->num_4x4_blk);
           }
         }
         frame_mv[NEARMV][ref_frame] = backup_mv;
@@ -4521,8 +4503,6 @@ void av1_rd_pick_inter_mode_sb(const AV1_COMP *cpi, TileDataEnc *tile_data,
         best_mode_skippable = skippable;
 
         if (!x->select_tx_size) swap_block_ptr(x, ctx, 1, 0, 0, max_plane);
-        memcpy(ctx->zcoeff_blk, x->zcoeff_blk[mbmi->tx_size],
-               sizeof(ctx->zcoeff_blk[0]) * ctx->num_4x4_blk);
       }
     }
 
@@ -4865,7 +4845,6 @@ void av1_rd_pick_inter_mode_sub8x8(const AV1_COMP *cpi, TileDataEnc *tile_data,
   int internal_active_edge =
       av1_active_edge_sb(cpi, mi_row, mi_col) && av1_internal_image_edge(cpi);
 
-  memset(x->zcoeff_blk[TX_4X4], 0, 4);
   av1_zero(best_mbmode);
 
   for (i = 0; i < 4; i++) {
@@ -5157,7 +5136,6 @@ void av1_rd_pick_inter_mode_sub8x8(const AV1_COMP *cpi, TileDataEnc *tile_data,
               tmp_best_mbmode = *mbmi;
               for (i = 0; i < 4; i++) {
                 tmp_best_bmodes[i] = xd->mi[0]->bmi[i];
-                x->zcoeff_blk[TX_4X4][i] = !x->plane[0].eobs[i];
               }
               pred_exists = 1;
               if (switchable_filter_index == 0 && sf->use_rd_breakout &&
@@ -5301,8 +5279,6 @@ void av1_rd_pick_inter_mode_sub8x8(const AV1_COMP *cpi, TileDataEnc *tile_data,
         best_mbmode = *mbmi;
         best_skip2 = this_skip2;
         if (!x->select_tx_size) swap_block_ptr(x, ctx, 1, 0, 0, max_plane);
-        memcpy(ctx->zcoeff_blk, x->zcoeff_blk[TX_4X4],
-               sizeof(ctx->zcoeff_blk[0]) * ctx->num_4x4_blk);
 
         for (i = 0; i < 4; i++) best_bmodes[i] = xd->mi[0]->bmi[i];
       }
