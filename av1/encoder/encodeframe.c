@@ -2154,53 +2154,6 @@ static INLINE int get_motion_inconsistency(MOTION_DIRECTION this_mv,
 }
 #endif
 
-static void reencode_last_part(const AV1_COMP *const cpi, ThreadData *td,
-                              TileInfo *tile_info,
-                              int mi_row, int mi_col, BLOCK_SIZE bsize)
-{
-  const AV1_COMMON *const cm = &cpi->common;
-  MACROBLOCK *const x = &td->mb;
-  MACROBLOCKD *const xd = &x->e_mbd;
-  const int bsl = b_width_log2_lookup[bsize];
-  const int bs = (1 << bsl) / 4;
-  PARTITION_TYPE partition;
-  BLOCK_SIZE subsize;
-  MB_MODE_INFO *mbmi;
-
-  set_offsets(cpi, tile_info, x, mi_row, mi_col, bsize);
-  mbmi = &xd->mi[0]->mbmi;
-
-  partition = partition_lookup[bsl][mbmi->sb_type];
-  subsize = get_subsize(bsize, partition);
-
-  set_global_qcoeff_offsets(x, 3, bsize);
-  set_qcoeff_bufs(x, 0, bsize);
-
-  switch (partition) {
-    case PARTITION_NONE:
-      rd_reencode_block(cpi, td, tile_info, x, mi_row, mi_col, subsize);
-      break;
-    case PARTITION_HORZ:
-      rd_reencode_block(cpi, td, tile_info, x, mi_row, mi_col, subsize);
-      if (mi_row + bs < cm->mi_rows) {
-        set_qcoeff_bufs(x, 1, subsize);
-        rd_reencode_block(cpi, td, tile_info, x, mi_row + bs, mi_col, subsize);
-      }
-      break;
-    case PARTITION_VERT:
-      rd_reencode_block(cpi, td, tile_info, x, mi_row, mi_col, subsize);
-      if (mi_col + bs < cm->mi_cols) {
-        set_qcoeff_bufs(x, 1, subsize);
-        rd_reencode_block(cpi, td, tile_info, x, mi_row, mi_col + bs, subsize);
-      }
-      break;
-    case PARTITION_SPLIT:
-      reencode_last_part(cpi, td, tile_info, mi_row + bs, mi_col + bs, subsize);
-      break;
-    default: assert(0);
-  }
-}
-
 // TODO(jingning,jimbankoski,rbultje): properly skip partition types that are
 // unlikely to be selected depending on previous rate-distortion optimization
 // results, for encoding speed-up.
@@ -2603,42 +2556,32 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
   *rd_cost = best_rdc;
 
   if (best_rdc.rate < INT_MAX && best_rdc.dist < INT64_MAX) {
-    int need_full_reencode = best_partition != PARTITION_SPLIT || bsize == BLOCK_8X8;
+    int need_reencode = best_partition != PARTITION_SPLIT || bsize == BLOCK_8X8;
     subsize = get_subsize(bsize, best_partition);
-    if (need_full_reencode) {
+    if (need_reencode) {
+      set_qcoeff_bufs(x, 0, bsize);
+
       restore_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
       restore_mode_info(cpi, xd, rdctx, mi_row, mi_col, 0, 0);
+      rd_reencode_block(cpi, td, tile_info, x, mi_row, mi_col, subsize);
 
       if (bsize > BLOCK_8X8) {
-          if (best_partition == PARTITION_VERT && !force_vert_split) {
-            restore_mode_info(cpi, xd, rdctx, mi_row, mi_col, 0, mi_step);
-          } else if (best_partition == PARTITION_HORZ && !force_horz_split) {
-            restore_mode_info(cpi, xd, rdctx, mi_row, mi_col, mi_step, 0);
-          }
-      }
+        set_qcoeff_bufs(x, 1, subsize);
 
-      if (part_idx < 3) {
-        set_qcoeff_bufs(x, 0, bsize);
-        rd_reencode_block(cpi, td, tile_info, x, mi_row, mi_col, subsize);
-
-        if (bsize > BLOCK_8X8) {
-          set_qcoeff_bufs(x, 1, subsize);
-
-          if (best_partition == PARTITION_VERT && !force_vert_split) {
-            rd_reencode_block(cpi, td, tile_info, x, mi_row, mi_col + mi_step,
-                              subsize);
-          } else if (best_partition == PARTITION_HORZ && !force_horz_split) {
-            rd_reencode_block(cpi, td, tile_info, x, mi_row + mi_step, mi_col,
-                              subsize);
-          }
+        if (best_partition == PARTITION_VERT && !force_vert_split) {
+          restore_mode_info(cpi, xd, rdctx, mi_row, mi_col, 0, mi_step);
+          rd_reencode_block(cpi, td, tile_info, x, mi_row, mi_col + mi_step,
+                            subsize);
+        } else if (best_partition == PARTITION_HORZ && !force_horz_split) {
+          restore_mode_info(cpi, xd, rdctx, mi_row, mi_col, mi_step, 0);
+          rd_reencode_block(cpi, td, tile_info, x, mi_row + mi_step, mi_col,
+                            subsize);
         }
-        update_partition_context(xd, mi_row, mi_col, subsize, bsize);
       }
+
+      update_partition_context(xd, mi_row, mi_col, subsize, bsize);
     } else {
       restore_rd_results(cpi, rdctx, td, mi_row, mi_col, bsize);
-      if (part_idx < 3) {
-        reencode_last_part(cpi, td, tile_info, mi_row + mi_step, mi_col + mi_step, subsize);
-      }
     }
   }
 
