@@ -2499,9 +2499,13 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
       if (sum_rdc.rdcost < best_rdc.rdcost) {
         best_rdc = sum_rdc;
         best_partition = PARTITION_HORZ;
-        save_mode_info(cpi, xd, rdctx, mi_row, mi_col, 0, 0);
-        if (bsize > BLOCK_8X8 && !force_horz_split)
+        if (bsize > BLOCK_8X8 && !force_horz_split) {
+          restore_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+          save_rd_results(cpi, rdctx, td, mi_row, mi_col, subsize);
           save_mode_info(cpi, xd, rdctx, mi_row, mi_col, mi_step, 0);
+        } else {
+          save_mode_info(cpi, xd, rdctx, mi_row, mi_col, 0, 0);
+        }
       }
     }
   }
@@ -2541,9 +2545,14 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
       if (sum_rdc.rdcost < best_rdc.rdcost) {
         best_rdc = sum_rdc;
         best_partition = PARTITION_VERT;
-        save_mode_info(cpi, xd, rdctx, mi_row, mi_col, 0, 0);
-        if (bsize > BLOCK_8X8 && !force_vert_split)
+
+        if (bsize > BLOCK_8X8 && !force_vert_split) {
+          restore_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+          save_rd_results(cpi, rdctx, td, mi_row, mi_col, subsize);
           save_mode_info(cpi, xd, rdctx, mi_row, mi_col, 0, mi_step);
+        } else {
+          save_mode_info(cpi, xd, rdctx, mi_row, mi_col, 0, 0);
+        }
       }
     }
   }
@@ -2559,24 +2568,23 @@ static void rd_pick_partition(const AV1_COMP *const cpi, ThreadData *td,
     int need_reencode = best_partition != PARTITION_SPLIT || bsize == BLOCK_8X8;
     subsize = get_subsize(bsize, best_partition);
     if (need_reencode) {
-      set_qcoeff_bufs(x, 0, bsize);
-
-      restore_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
-      restore_mode_info(cpi, xd, rdctx, mi_row, mi_col, 0, 0);
-      rd_reencode_block(cpi, td, tile_info, x, mi_row, mi_col, subsize);
-
-      if (bsize > BLOCK_8X8) {
+      if (bsize > BLOCK_8X8 && best_partition == PARTITION_VERT && !force_vert_split) {
+        restore_rd_results(cpi, rdctx, td, mi_row, mi_col, subsize);
         set_qcoeff_bufs(x, 1, subsize);
-
-        if (best_partition == PARTITION_VERT && !force_vert_split) {
-          restore_mode_info(cpi, xd, rdctx, mi_row, mi_col, 0, mi_step);
-          rd_reencode_block(cpi, td, tile_info, x, mi_row, mi_col + mi_step,
-                            subsize);
-        } else if (best_partition == PARTITION_HORZ && !force_horz_split) {
-          restore_mode_info(cpi, xd, rdctx, mi_row, mi_col, mi_step, 0);
-          rd_reencode_block(cpi, td, tile_info, x, mi_row + mi_step, mi_col,
-                            subsize);
-        }
+        restore_mode_info(cpi, xd, rdctx, mi_row, mi_col, 0, mi_step);
+        rd_reencode_block(cpi, td, tile_info, x, mi_row, mi_col + mi_step,
+                          subsize);
+      } else if (bsize > BLOCK_8X8 && best_partition == PARTITION_HORZ && !force_horz_split) {
+        restore_rd_results(cpi, rdctx, td, mi_row, mi_col, subsize);
+        set_qcoeff_bufs(x, 1, subsize);
+        restore_mode_info(cpi, xd, rdctx, mi_row, mi_col, mi_step, 0);
+        rd_reencode_block(cpi, td, tile_info, x, mi_row + mi_step, mi_col,
+                          subsize);
+      } else {
+        set_qcoeff_bufs(x, 0, bsize);
+        restore_entropy_context(x, mi_row, mi_col, a, l, sa, sl, bsize);
+        restore_mode_info(cpi, xd, rdctx, mi_row, mi_col, 0, 0);
+        rd_reencode_block(cpi, td, tile_info, x, mi_row, mi_col, subsize);
       }
 
       update_partition_context(xd, mi_row, mi_col, subsize, bsize);
